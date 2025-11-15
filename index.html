@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="author" content="dluvbell">
+    <title data-lang-key="pageTitle">Canada-Thai Retirement (Non-Resident)</title>
+    <link rel="stylesheet" href="style.css">
+    </head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1 data-lang-key="mainTitle">Canada to Thailand Retirement</h1>
+            <p data-lang-key="subTitle">Simulate non-resident retirement in Thailand (Single Person).</p>
+            <div class="header-controls">
+                <div class="theme-switch-wrapper">
+                    <label class="theme-switch" for="theme-toggle">
+                        <input type="checkbox" id="theme-toggle" />
+                        <div class="slider round"></div>
+                    </label>
+                    <span data-lang-key="darkModeLabel">Dark Mode</span>
+                </div>
+                <button id="lang-toggle" type="button">한국어</button>
+                
+                <button id="load-scenario-btn" type="button" class="btn-secondary" data-lang-key="loadScenarioBtn">Load Scenario</button>
+                <button id="save-scenario-btn" type="button" class="btn-secondary" data-lang-key="saveScenarioBtn">Save Scenario</button>
+                <input type="file" id="scenario-file-input" accept=".json" style="display: none;">
+                </div>
+        </header>
+
+        <nav class="tab-nav">
+            <button class="tab-btn active" data-tab="scenarioA" data-lang-key="tabScenarioA">Scenario A</button>
+            <button class="tab-btn" data-tab="scenarioB" data-lang-key="tabScenarioB">Scenario B</button>
+            <button class="tab-btn" data-tab="results" data-lang-key="tabResults">Results</button>
+        </nav>
+
+        <main class="tab-content-container">
+            <div id="scenarioA-pane" class="tab-pane active">
+                <div class="input-section">
+                    <h2 data-lang-key="section1Title">1. Enter Information (Scenario A)</h2>
+                    <div class="form-grid">
+                        <fieldset>
+                            <legend data-lang-key="legendBasicInfo">Basic Information</legend>
+                             <div class="form-group">
+                                <label for="exchangeRate" data-lang-key="exchangeRateLabel">Exchange Rate (1 CAD = ? THB)</label>
+                                <span class="tooltip" data-lang-key-tooltip="exchangeRateTooltip">?</span>
+                                <input type="number" id="exchangeRate" value="25.0" step="0.1">
+                            </div>
+                           <div class="form-group">
+                                <label for="retirementAge_a" data-lang-key="retirementAgeLabel">Retirement Age</label>
+                                <input type="number" id="retirementAge_a" value="60">
+                            </div>
+                             <div class="form-group">
+                                <label for="lifeExpectancy" data-lang-key="lifeExpectancyLabel">Maximum Calculation Age</label>
+                                <input type="number" id="lifeExpectancy" value="95">
+                            </div>
+                        </fieldset>
+
+                        <fieldset>
+                            <legend data-lang-key="legendYourInfo">Income Plan</legend> <div class="form-group">
+                                <label for="userBirthYear" data-lang-key="userBirthYearLabel">Birth Year</label>
+                                <input type="number" id="userBirthYear" value="1980">
+                            </div>
+                             <div class="form-group">
+                                <label for="cppStartAge_a" data-lang-key="cppStartAgeLabel">CPP Start Age</label>
+                                <input type="number" id="cppStartAge_a" value="60">
+                            </div>
+                             <div class="form-group">
+                                <label for="userCppAt65" data-lang-key="userCppAt65Label">Estimated CPP at 65 (Annual)</label>
+                                <span class="tooltip" data-lang-key-tooltip="cppTooltip">?</span>
+                                <input type="number" id="userCppAt65" value="8000">
+                            </div>
+                             <div class="form-group">
+                                <label for="oasStartAge_a" data-lang-key="oasStartAgeLabel">OAS Start Age</label>
+                                <input type="number" id="oasStartAge_a" value="65">
+                            </div>
+                            <div class="form-group">
+                                <label for="userYearsInCanada" data-lang-key="userYearsInCanadaLabel">Years in Canada (18+)</label>
+                                <span class="tooltip" data-lang-key-tooltip="userYearsInCanadaTooltip">?</span>
+                                <input type="number" id="userYearsInCanada" value="20">
+                            </div>
+                            </fieldset>
+
+                        <fieldset>
+                            <legend data-lang-key="legendAssets">Assets at Retirement</legend>
+                            <div class="form-grid-assets"> <div class="form-group"> <label for="asset_rrsp" data-lang-key="assetRRSP">RRSP/RRIF</label> <input type="number" id="asset_rrsp" value="300000"> </div>
+                                <div class="form-group"> <label for="asset_tfsa" data-lang-key="assetTFSA">TFSA</label> <input type="number" id="asset_tfsa" value="100000"> </div>
+                                <div class="form-group"> <label for="asset_nonreg" data-lang-key="assetNonReg">Non-Registered (Total)</label> <input type="number" id="asset_nonreg" value="50000"> </div>
+                                <div class="form-group"> <label for="asset_lif" data-lang-key="assetLIF">LIF</label> <input type="number" id="asset_lif" value="0"> </div>
+                                </div>
+                        </fieldset>
+
+                        <fieldset>
+                            <legend data-lang-key="legendGrowthAssumptionsIncome">Growth, Assumptions & Other Items</legend>
+                            <div class="form-grid-4-col" style="margin-bottom: 1rem;">
+                                <div class="form-group"> <label for="return_rrsp" data-lang-key="returnRRSP">RRSP/RRIF (%)</label> <input type="number" id="return_rrsp" step="0.1" value="6"> </div>
+                                <div class="form-group"> <label for="return_tfsa" data-lang-key="returnTFSA">TFSA (%)</label> <input type="number" id="return_tfsa" step="0.1" value="6"> </div>
+                                <div class="form-group"> <label for="return_nonreg" data-lang-key="returnNonReg">Non-Reg (%)</label> <input type="number" id="return_nonreg" step="0.1" value="6"> </div>
+                                <div class="form-group"> <label for="return_lif" data-lang-key="returnLIF">LIF (%)</label> <input type="number" id="return_lif" step="0.1" value="5"> </div>
+                            </div>
+                            <div class="form-grid-4-col stdev-grid" style="margin-bottom: 1.5rem;">
+                                <div class="form-group"> <label for="stdev_rrsp" data-lang-key="stdevRRSP">RRSP StDev (%)</label> <input type="number" id="stdev_rrsp" step="0.1" value="10"> </div>
+                                <div class="form-group"> <label for="stdev_tfsa" data-lang-key="stdevTFSA">TFSA StDev (%)</label> <input type="number" id="stdev_tfsa" step="0.1" value="10"> </div>
+                                <div class="form-group"> <label for="stdev_nonreg" data-lang-key="stdevNonReg">Non-Reg StDev (%)</label> <input type="number" id="stdev_nonreg" step="0.1" value="10"> </div>
+                                <div class="form-group"> <label for="stdev_lif" data-lang-key="stdevLIF">LIF StDev (%)</label> <input type="number" id="stdev_lif" step="0.1" value="8"> </div>
+                            </div>
+                            <div style="margin-bottom: 1.5rem;"> <div class="form-group"> <label for="cola" data-lang-key="colaLabel">Global COLA (%)</label> <input type="number" id="cola" step="0.1" value="2.5"> </div>
+                            </div>
+                             <hr style="border-top: 1px dashed var(--border-color); margin: 1.5rem 0;">
+                            <div> <label data-lang-key="legendOtherIncome">Other Income & Expenses</label>
+                                <p data-lang-key="otherIncomeDesc" style="margin-bottom: 0.5rem; font-size: 0.9em;">Manage pensions, rental income, and living expenses.</p>
+                                <button id="manage-income-btn" type="button" data-lang-key="manageIncomeExpensesBtn">[ Manage Income & Expenses ]</button>
+                            </div>
+                        </fieldset>
+                        </div>
+                </div>
+            </div>
+
+            <div id="scenarioB-pane" class="tab-pane">
+                 <div class="input-section">
+                    <h2 data-lang-key="section1Title">1. Enter Information (Scenario B)</h2>
+                    <div class="form-grid">
+                         <fieldset>
+                            <legend data-lang-key="legendBasicInfo">Basic Information</legend>
+                            <div class="form-group">
+                                <label for="exchangeRate_b" data-lang-key="exchangeRateLabel">Exchange Rate (1 CAD = ? THB)</label>
+                                <span class="tooltip" data-lang-key-tooltip="exchangeRateTooltip">?</span>
+                                <input type="number" id="exchangeRate_b" value="25.0" step="0.1">
+                            </div>
+                            <div class="form-group">
+                                <label for="retirementAge_b" data-lang-key="retirementAgeLabel">Retirement Age</label>
+                                <input type="number" id="retirementAge_b" value="65"> </div>
+                            <div class="form-group">
+                                <label for="lifeExpectancy_b" data-lang-key="lifeExpectancyLabel">Maximum Calculation Age</label>
+                                <input type="number" id="lifeExpectancy_b" value="95">
+                            </div>
+                        </fieldset>
+                        <fieldset>
+                            <legend data-lang-key="legendYourInfo">Income Plan</legend> <div class="form-group">
+                                <label for="userBirthYear_b" data-lang-key="userBirthYearLabel">Birth Year</label>
+                                <input type="number" id="userBirthYear_b" value="1980">
+                            </div>
+                            <div class="form-group">
+                                <label for="cppStartAge_b" data-lang-key="cppStartAgeLabel">CPP Start Age</label>
+                                <input type="number" id="cppStartAge_b" value="65"> </div>
+                            <div class="form-group">
+                                <label for="userCppAt65_b" data-lang-key="userCppAt65Label">Estimated CPP at 65 (Annual)</label>
+                                <span class="tooltip" data-lang-key-tooltip="cppTooltip">?</span>
+                                <input type="number" id="userCppAt65_b" value="8000">
+                            </div>
+                            <div class="form-group">
+                                <label for="oasStartAge_b" data-lang-key="oasStartAgeLabel">OAS Start Age</label>
+                                <input type="number" id="oasStartAge_b" value="65"> </div>
+                            <div class="form-group">
+                                <label for="userYearsInCanada_b" data-lang-key="userYearsInCanadaLabel">Years in Canada (18+)</label>
+                                <span class="tooltip" data-lang-key-tooltip="userYearsInCanadaTooltip">?</span>
+                                <input type="number" id="userYearsInCanada_b" value="20">
+                            </div>
+                            </fieldset>
+                        
+                        <fieldset>
+                            <legend data-lang-key="legendAssets">Assets at Retirement</legend>
+                             <div class="form-grid-assets"> <div class="form-group"> <label for="asset_rrsp_b" data-lang-key="assetRRSP">RRSP/RRIF</label> <input type="number" id="asset_rrsp_b" value="300000"> </div>
+                                <div class="form-group"> <label for="asset_tfsa_b" data-lang-key="assetTFSA">TFSA</label> <input type="number" id="asset_tfsa_b" value="100000"> </div>
+                                <div class="form-group"> <label for="asset_nonreg_b" data-lang-key="assetNonReg">Non-Registered (Total)</label> <input type="number" id="asset_nonreg_b" value="50000"> </div>
+                                <div class="form-group"> <label for="asset_lif_b" data-lang-key="assetLIF">LIF</label> <input type="number" id="asset_lif_b" value="0"> </div>
+                                </div>
+                        </fieldset>
+
+                        <fieldset>
+                            <legend data-lang-key="legendGrowthAssumptionsIncome">Growth, Assumptions & Other Items</legend>
+                             <div class="form-grid-4-col" style="margin-bottom: 1rem;"> <div class="form-group"> <label for="return_rrsp_b" data-lang-key="returnRRSP">RRSP/RRIF (%)</label> <input type="number" id="return_rrsp_b" step="0.1" value="6"> </div>
+                                <div class="form-group"> <label for="return_tfsa_b" data-lang-key="returnTFSA">TFSA (%)</label> <input type="number" id="return_tfsa_b" step="0.1" value="6"> </div>
+                                <div class="form-group"> <label for="return_nonreg_b" data-lang-key="returnNonReg">Non-Reg (%)</label> <input type="number" id="return_nonreg_b" step="0.1" value="6"> </div>
+                                <div class="form-group"> <label for="return_lif_b" data-lang-key="returnLIF">LIF (%)</label> <input type="number" id="return_lif_b" step="0.1" value="5"> </div>
+                            </div>
+                            <div class="form-grid-4-col stdev-grid" style="margin-bottom: 1.5rem;">
+                                <div class="form-group"> <label for="stdev_rrsp_b" data-lang-key="stdevRRSP">RRSP StDev (%)</label> <input type="number" id="stdev_rrsp_b" step="0.1" value="10"> </div>
+                                <div class="form-group"> <label for="stdev_tfsa_b" data-lang-key="stdevTFSA">TFSA StDev (%)</label> <input type="number" id="stdev_tfsa_b" step="0.1" value="10"> </div>
+                                <div class="form-group"> <label for="stdev_nonreg_b" data-lang-key="stdevNonReg">Non-Reg StDev (%)</label> <input type="number" id="stdev_nonreg_b" step="0.1" value="10"> </div>
+                                <div class="form-group"> <label for="stdev_lif_b" data-lang-key="stdevLIF">LIF StDev (%)</label> <input type="number" id="stdev_lif_b" step="0.1" value="8"> </div>
+                            </div>
+                            <div style="margin-bottom: 1.5rem;"> <div class="form-group"> <label for="cola_b" data-lang-key="colaLabel">Global COLA (%)</label> <input type="number" id="cola_b" step="0.1" value="2.5"> </div>
+                            </div>
+                             <hr style="border-top: 1px dashed var(--border-color); margin: 1.5rem 0;">
+                            <div> <label data-lang-key="legendOtherIncome">Other Income & Expenses</label>
+                                <p data-lang-key="otherIncomeDesc" style="margin-bottom: 0.5rem; font-size: 0.9em;">Manage pensions, rental income, and living expenses.</p>
+                                <button id="manage-income-btn_b" type="button" data-lang-key="manageIncomeExpensesBtn">[ Manage Income & Expenses ]</button>
+                            </div>
+                        </fieldset>
+                         </div>
+                </div>
+            </div>
+
+            <div id="results-pane" class="tab-pane">
+                 <div class="output-section">
+                    <h2 data-lang-key="section2Title">2. Analysis Results</h2>
+
+                    <div class="main-action-controls">
+                        <button id="runAnalysisBtn" type="button" data-lang-key="runAnalysisBtn">Run Analysis</button>
+                        <div class="mc-group">
+                            <button id="runMonteCarloBtn" type="button" data-lang-key="runMonteCarloBtn">Run Monte Carlo</button>
+                            <div>
+                                <label for="monteCarloRunsSelect" data-lang-key="monteCarloRunsLabel" style="margin-bottom: 0.25rem; font-size: 0.9em;">Runs:</label>
+                                <select id="monteCarloRunsSelect">
+                                    <option value="1000">1K</option>
+                                    <option value="5000">5K</option>
+                                    <option value="10000" selected>10K</option>
+                                    <option value="50000">50K</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button id="runOptimizationBtn" type="button" class="hidden" data-lang-key="runOptimizationBtn">Run Optimization (N/A)</button>
+                    </div>
+
+                    <div id="loading-indicator" class="hidden"> <p data-lang-key="loadingText">Calculating...</p> <div class="spinner"></div> </div>
+                    <div id="optimizer-loading-indicator" class="hidden">
+                         <p id="optimizer-loading-text" data-lang-key="loadingTextOptimizer" style="font-weight: bold; margin-bottom: 0.5rem;">Running Optimization...</p>
+                         <p style="font-size: 0.9em; margin-top: 0;">(This may take up to a minute)</p>
+                         <div class="spinner"></div>
+                    </div>
+                    <div id="results-container" class="hidden">
+                        <div id="break-even-result">
+                            <p id="break-even-text-result"></p>
+                            <div id="additional-metrics-container"></div>
+                            <div id="monte-carlo-results-container"></div>
+                        </div>
+                        
+                        <div id="graph-container" class="hidden">
+                             <h3>Asset Comparison Graph</h3> 
+                             <svg id="results-chart"></svg>
+                        </div>
+
+                        <div id="mc-graph-container-area" class="hidden">
+                             <div id="mc-graph-a-container" class="mc-graph-container">
+                                 <h3 data-lang-key="mcGraphTitleA">Monte Carlo Graph (Scenario A)</h3> 
+                                 <svg id="mc-chart-a"></svg>
+                             </div>
+                             <div id="mc-graph-b-container" class="mc-graph-container">
+                                 <h3 data-lang-key="mcGraphTitleB">Monte Carlo Graph (Scenario B)</h3> 
+                                 <svg id="mc-chart-b"></svg>
+                             </div>
+                        </div>
+
+                        <div class="detailed-table-section">
+                            <div class="table-controls">
+                                <button id="toggle-graph-btn" type="button" class="hidden" data-lang-key="toggleGraphBtn">Show/Hide Graph</button>
+                                <button id="toggle-details-a-btn" type="button" class="hidden">[A] Details</button>
+                                <button id="toggle-details-b-btn" type="button" class="hidden">[B] Details</button>
+                                <button id="export-csv-btn" type="button" class="hidden" data-lang-key="exportCsvBtn">Export to CSV</button>
+                            </div>
+                            <div id="detailed-table-container-a" class="hidden" style="margin-top: 1rem;"></div>
+                            <div id="detailed-table-container-b" class="hidden" style="margin-top: 1rem;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <div class="footer-credits"> <p>© 2025 dluvbell. All Rights Reserved.</p> <p data-lang-key="createdBy">Created by <a href="https://github.com/dluvbell" target="_blank" rel="noopener noreferrer">dluvbell</a>.</p> </div>
+            <h3 data-lang-key="disclaimerTitle">Disclaimer</h3>
+            <p data-lang-key="disclaimerP1">For information only.</p>
+            <p data-lang-key="disclaimerP2">Results are estimates. Not financial advice.</p>
+            <p data-lang-key="disclaimerP3">Consult a professional specific to international tax.</p>
+        </footer>
+    </div>
+
+     <div id="welcome-modal" class="modal">
+         <div class="modal-content">
+            <button id="modal-lang-toggle" type="button">한국어</button>
+            <span class="close-button">&times;</span>
+            <h2 data-lang-key="welcomeTitle">Welcome!</h2>
+            <p data-lang-key="welcomeP1">This tool helps you compare two potential retirement scenarios.</p>
+            <h3 data-lang-key="resultsHeader">Key Features & Calculations:</h3>
+            <p data-lang-key="resultsP1">The simulator calculates year-by-year projections based on your inputs for two different scenarios (A and B).</p>
+            <p data-lang-key="resultsP2">Results include asset growth, income sources, expenses, withdrawals according to your strategy, and estimated taxes.</p>
+            <h3 data-lang-key="disclaimerTitle">Disclaimer</h3>
+            <p data-lang-key="disclaimerP2">Results are estimates based on provided inputs and assumptions. This is not financial advice.</p>
+             <p data-lang-key="disclaimerP3">Consult with a qualified financial professional before making any decisions.</p>
+            <div class="agreement-section">
+                <input type="checkbox" id="disclaimer-agree">
+                <label for="disclaimer-agree" data-lang-key="agreeLabel">I understand and agree.</label>
+            </div>
+            <button id="agree-btn" type="button" data-lang-key="confirmBtn" disabled>Confirm</button>
+         </div>
+     </div>
+
+     <div id="income-modal" class="modal hidden">
+         <div class="modal-content">
+             <span class="close-button">&times;</span>
+             <h2 data-lang-key="modalTitle">Manage Income & Expenses (A)</h2>
+             <div id="income-list"></div>
+             <hr>
+             <h3 data-lang-key="modalAddTitle">Add/Edit Item</h3>
+             <div id="add-income-form" class="form-grid-modal">
+                 <input type="hidden" id="income-id">
+                 <div class="form-group">
+                    <label for="income-type" data-lang-key="incomeTypeLabel">Type</label>
+                    <select id="income-type">
+                        <option value="pension" data-lang-key="incomeTypePension">Income: Pension (Tax Exempt in Thailand)</option>
+                        <option value="income" data-lang-key="incomeTypeOther">Income: Other (Taxable in Thailand)</option>
+                        <option value="income_overseas" data-lang-key="incomeTypeOverseas">Income: Other (Overseas/Not Remitted)</option>
+                        <option value="expense_thai" data-lang-key="expenseTypeThai">Expense: Thai Living (Remitted)</option>
+                        <option value="expense_overseas" data-lang-key="expenseTypeOverseas">Expense: Overseas Travel (Not Remitted)</option>
+                    </select>
+                </div>
+                 <div class="form-group"><label for="income-desc" data-lang-key="incomeDescLabel">Description</label><input type="text" id="income-desc"></div>
+                 <div class="form-group"><label for="income-amount" data-lang-key="incomeAmountLabel">Amount (PV)</label><input type="number" id="income-amount"><div class="future-value-display" id="future-value-display"></div></div>
+                 <div class="form-group"><label for="income-start-age" data-lang-key="incomeStartAgeLabel">Start Age</label><input type="number" id="income-start-age"></div>
+                 <div class="form-group"><label for="income-end-age" data-lang-key="incomeEndAgeLabel">End Age</label><input type="number" id="income-end-age"></div>
+                 <div class="form-group">
+                    <label for="income-cola" data-lang-key="incomeColaLabel">COLA (%)</label>
+                    <span class="tooltip" data-lang-key-tooltip="incomeColaTooltip">?</span>
+                    <input type="number" id="income-cola" placeholder="0" step="0.1">
+                </div>
+                </div>
+             <button id="save-income-btn" type="button" data-lang-key="saveIncomeBtn">Save</button>
+         </div>
+     </div>
+     <div id="income-modal_b" class="modal hidden">
+         <div class="modal-content">
+             <span class="close-button">&times;</span>
+             <h2 data-lang-key="modalTitle">Manage Income & Expenses (B)</h2>
+             <div id="income-list_b"></div>
+             <hr>
+             <h3 data-lang-key="modalAddTitle">Add/Edit Item</h3>
+             <div id="add-income-form_b" class="form-grid-modal">
+                 <input type="hidden" id="income-id_b">
+                 <div class="form-group">
+                    <label for="income-type_b" data-lang-key="incomeTypeLabel">Type</label>
+                     <select id="income-type_b">
+                        <option value="pension" data-lang-key="incomeTypePension">Income: Pension (Tax Exempt in Thailand)</option>
+                        <option value="income" data-lang-key="incomeTypeOther">Income: Other (Taxable in Thailand)</option>
+                        <option value="income_overseas" data-lang-key="incomeTypeOverseas">Income: Other (Overseas/Not Remitted)</option>
+                        <option value="expense_thai" data-lang-key="expenseTypeThai">Expense: Thai Living (Remitted)</option>
+                        <option value="expense_overseas" data-lang-key="expenseTypeOverseas">Expense: Overseas Travel (Not Remitted)</option>
+                    </select>
+                </div>
+                 <div class="form-group"><label for="income-desc_b" data-lang-key="incomeDescLabel">Description</label><input type="text" id="income-desc_b"></div>
+                 <div class="form-group"><label for="income-amount_b" data-lang-key="incomeAmountLabel">Amount (PV)</label><input type="number" id="income-amount_b"><div class="future-value-display" id="future-value-display_b"></div></div>
+                 <div class="form-group"><label for="income-start-age_b" data-lang-key="incomeStartAgeLabel">Start Age</label><input type="number" id="income-start-age_b"></div>
+                 <div class="form-group"><label for="income-end-age_b" data-lang-key="incomeEndAgeLabel">End Age</label><input type="number" id="income-end-age_b"></div>
+                 <div class="form-group">
+                    <label for="income-cola_b" data-lang-key="incomeColaLabel">COLA (%)</label>
+                    <span class="tooltip" data-lang-key-tooltip="incomeColaTooltip">?</span>
+                    <input type="number" id="income-cola_b" placeholder="0" step="0.1">
+                </div>
+                </div>
+             <button id="save-income-btn_b" type="button" data-lang-key="saveIncomeBtn">Save</button>
+         </div>
+     </div>
+
+       <script src="https://d3js.org/d3.v7.min.js"></script> 
+       <script src="data.js"></script>
+       <script src="incomeTaxEngine.js"></script>
+       <script src="withdrawalEngine.js"></script>
+       <script src="engineCore.js"></script>
+       <script src="monteCarloEngine.js"></script>
+       <script src="uiCore.js"></script> 
+       <script src="uiDataHandler.js"></script>
+       <script src="uiIncomeModal.js"></script>
+       <script src="uiResultsDisplay.js"></script> 
+       <script src="uiOptimizationDisplay.js"></script> 
+       <script src="uiMonteCarloDisplay.js"></script> 
+    </body>
+</html>
