@@ -55,6 +55,10 @@
                                 <label for="lifeExpectancy" data-lang-key="lifeExpectancyLabel">Maximum Calculation Age</label>
                                 <input type="number" id="lifeExpectancy" value="95">
                             </div>
+                            <div class="form-group" style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
+                                <input type="checkbox" id="isCouple_a" style="width: auto;">
+                                <label for="isCouple_a" style="margin:0; cursor: pointer;">Couple / Split Income Mode?</label>
+                            </div>
                         </fieldset>
 
                         <fieldset>
@@ -84,11 +88,24 @@
 
                         <fieldset>
                             <legend data-lang-key="legendAssets">Assets at Retirement</legend>
-                            <div class="form-grid-assets"> <div class="form-group"> <label for="asset_rrsp" data-lang-key="assetRRSP">RRSP/RRIF</label> <input type="number" id="asset_rrsp" value="300000"> </div>
-                                <div class="form-group"> <label for="asset_tfsa" data-lang-key="assetTFSA">TFSA</label> <input type="number" id="asset_tfsa" value="100000"> </div>
-                                <div class="form-group"> <label for="asset_nonreg" data-lang-key="assetNonReg">Non-Registered (Total)</label> <input type="number" id="asset_nonreg" value="50000"> </div>
-                                <div class="form-group"> <label for="asset_lif" data-lang-key="assetLIF">LIF</label> <input type="number" id="asset_lif" value="0"> </div>
+                            <div style="margin-bottom: 1rem;">
+                                <h4 style="margin-top: 0; color: var(--text-secondary); font-size: 0.95rem;">My Assets</h4>
+                                <div class="form-grid-assets"> 
+                                    <div class="form-group"> <label for="asset_rrsp" data-lang-key="assetRRSP">RRSP/RRIF</label> <input type="number" id="asset_rrsp" value="300000"> </div>
+                                    <div class="form-group"> <label for="asset_tfsa" data-lang-key="assetTFSA">TFSA</label> <input type="number" id="asset_tfsa" value="100000"> </div>
+                                    <div class="form-group"> <label for="asset_nonreg" data-lang-key="assetNonReg">Non-Registered (Total)</label> <input type="number" id="asset_nonreg" value="50000"> </div>
+                                    <div class="form-group"> <label for="asset_lif" data-lang-key="assetLIF">LIF</label> <input type="number" id="asset_lif" value="0"> </div>
                                 </div>
+                            </div>
+                            <div id="spouse-assets-container-a" class="hidden" style="border-top: 1px dashed var(--border-color); padding-top: 1rem;">
+                                <h4 style="margin-top: 0; color: var(--text-secondary); font-size: 0.95rem;">Spouse Assets</h4>
+                                <div class="form-grid-assets"> 
+                                    <div class="form-group"> <label>Spouse RRSP/RRIF</label> <input type="number" id="asset_rrsp_spouse" value="0"> </div>
+                                    <div class="form-group"> <label>Spouse TFSA</label> <input type="number" id="asset_tfsa_spouse" value="0"> </div>
+                                    <div class="form-group"> <label>Spouse Non-Reg</label> <input type="number" id="asset_nonreg_spouse" value="0"> </div>
+                                    <div class="form-group"> <label>Spouse LIF</label> <input type="number" id="asset_lif_spouse" value="0"> </div>
+                                </div>
+                            </div>
                         </fieldset>
 
                         <fieldset>
@@ -135,6 +152,10 @@
                                 <label for="lifeExpectancy_b" data-lang-key="lifeExpectancyLabel">Maximum Calculation Age</label>
                                 <input type="number" id="lifeExpectancy_b" value="95">
                             </div>
+                            <div class="form-group" style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
+                                <input type="checkbox" id="isCouple_b" style="width: auto;">
+                                <label for="isCouple_b" style="margin:0; cursor: pointer;">Couple / Split Income Mode?</label>
+                            </div>
                         </fieldset>
                         <fieldset>
                             <legend data-lang-key="legendYourInfo">Income Plan</legend> <div class="form-group">
@@ -161,11 +182,24 @@
                         
                         <fieldset>
                             <legend data-lang-key="legendAssets">Assets at Retirement</legend>
-                             <div class="form-grid-assets"> <div class="form-group"> <label for="asset_rrsp_b" data-lang-key="assetRRSP">RRSP/RRIF</label> <input type="number" id="asset_rrsp_b" value="300000"> </div>
-                                <div class="form-group"> <label for="asset_tfsa_b" data-lang-key="assetTFSA">TFSA</label> <input type="number" id="asset_tfsa_b" value="100000"> </div>
-                                <div class="form-group"> <label for="asset_nonreg_b" data-lang-key="assetNonReg">Non-Registered (Total)</label> <input type="number" id="asset_nonreg_b" value="50000"> </div>
-                                <div class="form-group"> <label for="asset_lif_b" data-lang-key="assetLIF">LIF</label> <input type="number" id="asset_lif_b" value="0"> </div>
+                            <div style="margin-bottom: 1rem;">
+                                <h4 style="margin-top: 0; color: var(--text-secondary); font-size: 0.95rem;">My Assets</h4>
+                                <div class="form-grid-assets"> 
+                                    <div class="form-group"> <label for="asset_rrsp_b" data-lang-key="assetRRSP">RRSP/RRIF</label> <input type="number" id="asset_rrsp_b" value="300000"> </div>
+                                    <div class="form-group"> <label for="asset_tfsa_b" data-lang-key="assetTFSA">TFSA</label> <input type="number" id="asset_tfsa_b" value="100000"> </div>
+                                    <div class="form-group"> <label for="asset_nonreg_b" data-lang-key="assetNonReg">Non-Registered (Total)</label> <input type="number" id="asset_nonreg_b" value="50000"> </div>
+                                    <div class="form-group"> <label for="asset_lif_b" data-lang-key="assetLIF">LIF</label> <input type="number" id="asset_lif_b" value="0"> </div>
                                 </div>
+                            </div>
+                            <div id="spouse-assets-container-b" class="hidden" style="border-top: 1px dashed var(--border-color); padding-top: 1rem;">
+                                <h4 style="margin-top: 0; color: var(--text-secondary); font-size: 0.95rem;">Spouse Assets</h4>
+                                <div class="form-grid-assets"> 
+                                    <div class="form-group"> <label>Spouse RRSP/RRIF</label> <input type="number" id="asset_rrsp_spouse_b" value="0"> </div>
+                                    <div class="form-group"> <label>Spouse TFSA</label> <input type="number" id="asset_tfsa_spouse_b" value="0"> </div>
+                                    <div class="form-group"> <label>Spouse Non-Reg</label> <input type="number" id="asset_nonreg_spouse_b" value="0"> </div>
+                                    <div class="form-group"> <label>Spouse LIF</label> <input type="number" id="asset_lif_spouse_b" value="0"> </div>
+                                </div>
+                            </div>
                         </fieldset>
 
                         <fieldset>
