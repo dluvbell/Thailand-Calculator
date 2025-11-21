@@ -1,10 +1,10 @@
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     8.1.0 (Fix: Prevented NaN error by continuing simulation with 0 post-depletion)
+ * @version     8.2.0 (Fix: Added Asset Aggregation for Couple Mode in Monte Carlo)
  * @file        monteCarloEngine.js
  * @created     2025-11-09
- * @description Core Monte Carlo engine. Fixes NaN bug by ensuring all runs return equal length arrays.
+ * @description Core Monte Carlo engine. Updated to merge User+Spouse assets before running simulations.
  */
 
 // monteCarloEngine.js
@@ -41,7 +41,6 @@ async function runMonteCarloSimulation(inputs, settings, stdevs, numRuns, progre
         for (let i = 0; i < numYears; i++) {
             const yearData = [];
             for (let j = 0; j < numRuns; j++) {
-                // This should now be safe as all arrays have equal length
                 yearData.push(allRunsData[j][i]); 
             }
             yearData.sort((a, b) => a - b);
@@ -67,17 +66,31 @@ async function runMonteCarloSimulation(inputs, settings, stdevs, numRuns, progre
  */
 function simulateSingleRun(inputs, settings, stdevs) {
     const scenario = JSON.parse(JSON.stringify(inputs.scenario)); // Deep copy
-    let currentAssets = scenario.user.assets;
+    
+    // [MODIFIED] Initialize Assets: Merge User and Spouse assets if Couple Mode is ON
+    // This mirrors the logic in engineCore.js to ensure MC simulates the full household pot.
+    let currentAssets = { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0 };
+    const userAssets = scenario.user.assets || { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0 };
+
+    if (scenario.spouse && scenario.spouse.hasSpouse) {
+        const spouseAssets = scenario.spouse.assets || { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0 };
+        currentAssets.rrsp = (userAssets.rrsp || 0) + (spouseAssets.rrsp || 0);
+        currentAssets.tfsa = (userAssets.tfsa || 0) + (spouseAssets.tfsa || 0);
+        currentAssets.nonreg = (userAssets.nonreg || 0) + (spouseAssets.nonreg || 0);
+        currentAssets.lif = (userAssets.lif || 0) + (spouseAssets.lif || 0);
+    } else {
+        currentAssets = JSON.parse(JSON.stringify(userAssets));
+    }
+
     let previousYearThaiTax = 0;
 
     const startYear = (scenario.user.birthYear || 0) + (scenario.retirementAge || 0);
     const endYear = (scenario.user.birthYear || 0) + (settings.maxAge || 95);
 
     const annualBalances = [];
-    let depleted = false; // [NEW] Flag to track depletion
+    let depleted = false; 
 
     for (let currentYear = startYear; currentYear <= endYear; currentYear++) {
-        // [MODIFIED] If depleted, just push 0 and continue to next year
         if (depleted) {
             annualBalances.push(0);
             continue;
@@ -117,14 +130,12 @@ function simulateSingleRun(inputs, settings, stdevs) {
         
         const totalAssets = Object.values(currentAssets).reduce((a, b) => a + b, 0);
 
-        // [MODIFIED] Check depletion
         if (wdInfo.depleted) {
-            depleted = true; // Set flag
-            annualBalances.push(0); // Push 0 for the depleted year
-            currentAssets = { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0 }; // Set assets to 0 for next loop
-            // 'break;' removed
+            depleted = true; 
+            annualBalances.push(0); 
+            currentAssets = { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0 }; 
         } else {
-            annualBalances.push(totalAssets); // Push total assets if not depleted
+            annualBalances.push(totalAssets); 
         }
         
         previousYearThaiTax = taxInfo.tax_thai;
