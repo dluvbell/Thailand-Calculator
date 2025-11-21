@@ -1,16 +1,16 @@
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     7.3.0 (Fix: Enforced 20-year residency rule for OAS payments abroad)
+ * @version     8.0.0 (Feature: Added Thai Tax Income Splitting logic for couples)
  * @file        incomeTaxEngine.js
  * @created     2025-11-09
- * @description Calculates taxes. OAS now correctly requires 20 years of residency for non-residents.
+ * @description Calculates taxes. Implements "Split Income" strategy for Thai Progressive Tax.
  */
 
 // incomeTaxEngine.js
 
 /**
- * Step 2: Calculate Non-Withdrawal Income (Gross - Single User)
+ * Step 2: Calculate Non-Withdrawal Income (Gross)
  */
 function step2_CalculateIncome(yearData, scenario, settings) {
     const userAge = yearData.userAge;
@@ -40,7 +40,7 @@ function step2_CalculateIncome(yearData, scenario, settings) {
                 yearData.income.user.pension += currentYearAmount;
             } else if (item.type === 'income') {
                 yearData.income.user.other_taxable += currentYearAmount;
-            } else if (item.type === 'income_overseas') { // NEW bucket
+            } else if (item.type === 'income_overseas') {
                 yearData.income.user.other_non_remitted += currentYearAmount;
             }
         }
@@ -51,7 +51,7 @@ function step2_CalculateIncome(yearData, scenario, settings) {
 }
 
 /**
- * Step 5: Calculate Taxes (Thai NR Protocol - Single User)
+ * Step 5: Calculate Taxes (Thai NR Protocol - Split Income Supported)
  */
 function step5_CalculateTaxes(yearData, scenario, settings) {
     const whtRate = withholdingTaxRates.PENSION || 0.15;
@@ -68,13 +68,24 @@ function step5_CalculateTaxes(yearData, scenario, settings) {
     const netOas = Math.max(0, inc.oas - oasClawback);
 
     // --- 2. Canadian Withholding Tax (15%) ---
+    // Typically applied to CPP, OAS, Pension. RRSP/LIF withdrawals handle their own WHT in withdrawalEngine.
     const canTaxBase = inc.cpp + netOas + inc.pension;
     const canTax = canTaxBase * whtRate;
 
     // --- 3. Thai Tax (Progressive on Remittances) ---
     const thaiBaseCAD = inc.other_taxable + wd.thai_taxable_remittance;
-    // [MODIFIED] Pass colaMultiplier to adjust tax brackets
-    const thaiTaxCAD = _calculateThaiTax(thaiBaseCAD, settings.exchangeRate, colaMultiplier);
+    let thaiTaxCAD = 0;
+
+    // [NEW] Split Income Logic
+    if (scenario.spouse && scenario.spouse.hasSpouse) {
+        // Split Strategy: Divide income by 2, calculate tax, multiply result by 2
+        const individualBase = thaiBaseCAD / 2;
+        const individualTax = _calculateThaiTax(individualBase, settings.exchangeRate, colaMultiplier);
+        thaiTaxCAD = individualTax * 2;
+    } else {
+        // Single Strategy: Standard calculation
+        thaiTaxCAD = _calculateThaiTax(thaiBaseCAD, settings.exchangeRate, colaMultiplier);
+    }
 
     // --- Final Totals ---
     return {
@@ -92,18 +103,28 @@ function _calculateThaiTax(incomeCAD, exchangeRate, colaMultiplier) {
     let taxTHB = 0;
     let previousLimit = 0;
 
+    // Apply Standard Deduction & Personal Allowance logic implicitly via brackets or pre-calc?
+    // Note: The brackets in data.js are applied to Net Taxable Income.
+    // A simple estimation of deductions (160k THB = 100k expense + 60k allowance) could be added here for accuracy,
+    // or assumed to be handled by the user adjusting the "Taxable Income" amount.
+    // For this engine, we will assume the brackets apply to the *Remitted Amount* minus a basic exemption proxy.
+    // Let's apply the standard 160,000 THB deduction (Expenses + Allowance) to get Net Taxable Income.
+    
+    const standardDeductionTHB = 160000; // 100k expense + 60k allowance
+    const netTaxableTHB = Math.max(0, incomeTHB - standardDeductionTHB);
+
     for (const bracket of thaiTaxBrackets) {
-        // [MODIFIED] Adjust bracket limit by COLA multiplier
+        // Adjust bracket limit by COLA multiplier (Inflation indexing for tax brackets)
         let currentLimit = bracket.upTo === undefined ? Infinity : bracket.upTo;
         if (currentLimit !== Infinity) {
             currentLimit *= colaMultiplier;
         }
 
-        if (incomeTHB > previousLimit) {
-            const taxableInBracket = Math.min(incomeTHB, currentLimit) - previousLimit;
+        if (netTaxableTHB > previousLimit) {
+            const taxableInBracket = Math.min(netTaxableTHB, currentLimit) - previousLimit;
             taxTHB += taxableInBracket * bracket.rate;
         }
-        if (incomeTHB <= currentLimit) break;
+        if (netTaxableTHB <= currentLimit) break;
         previousLimit = currentLimit;
     }
 
@@ -122,7 +143,7 @@ function _calculateIndexedCPP(cppAt65, startAge, currentAge, cola, baseYear, cur
 }
 
 function _calculateOAS(startAge, currentAge, yearsInCanada, colaMultiplier) {
-    // [NEW] Enforce 20-year residency rule for non-residents
+    // Enforce 20-year residency rule for non-residents
     if ((yearsInCanada || 0) < 20) {
         return 0;
     }
