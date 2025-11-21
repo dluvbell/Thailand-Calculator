@@ -1,10 +1,10 @@
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     7.1.0 (Feature: Added 'Hard Fail' logic on asset depletion)
+ * @version     8.0.0 (Feature: Aggregates User & Spouse assets in Couple Mode)
  * @file        engineCore.js
  * @created     2025-11-09
- * @description Core simulation loop. Now stops simulation for a scenario if assets are depleted.
+ * @description Core simulation loop. Now merges spouse assets into the total pool if 'Couple Mode' is active.
  */
 
 // engineCore.js
@@ -35,11 +35,30 @@ function runFullSimulation(inputsA, inputsB) {
 }
 
 /**
- * Simulates a single scenario year by year for one user.
+ * Simulates a single scenario year by year for the household (User + Spouse if applicable).
  */
 function simulateScenario(scenario, settings) {
     const results = [];
-    let currentAssets = scenario.user?.assets ? JSON.parse(JSON.stringify(scenario.user.assets)) : { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0 };
+    
+    // [MODIFIED] Initialize Assets: Merge User and Spouse assets if Couple Mode is ON
+    let currentAssets = { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0 };
+    const userAssets = scenario.user?.assets || { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0 };
+
+    if (scenario.spouse && scenario.spouse.hasSpouse) {
+        // Couple Mode: Aggregate assets into a single household pot
+        const spouseAssets = scenario.spouse.assets || { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0 };
+        currentAssets.rrsp = (userAssets.rrsp || 0) + (spouseAssets.rrsp || 0);
+        currentAssets.tfsa = (userAssets.tfsa || 0) + (spouseAssets.tfsa || 0);
+        currentAssets.nonreg = (userAssets.nonreg || 0) + (spouseAssets.nonreg || 0);
+        currentAssets.lif = (userAssets.lif || 0) + (spouseAssets.lif || 0);
+    } else {
+        // Single Mode: Use user assets only
+        currentAssets = JSON.parse(JSON.stringify(userAssets));
+    }
+
+    // Note: We track initial Non-Reg separately for tracking unrealized gains if needed later,
+    // but for simple sim, strictly tracking Adjusted Cost Base (ACB) requires detailed transaction history.
+    // Here we assume 'initialNonRegGains' applies to the total pot ratio.
     let currentUnrealizedGains_NonReg = scenario.user?.initialNonRegGains || 0;
 
     let previousYearThaiTax = 0;
@@ -76,7 +95,7 @@ function simulateScenario(scenario, settings) {
         yearData.expenses += yearData.expenses_thai_tax;
 
         // 4. Perform Withdrawals
-        // [MODIFIED] Get depletion status from withdrawal engine
+        // Get depletion status from withdrawal engine
         const wdInfo = step4_PerformWithdrawals(yearData, currentAssets, userAge);
         yearData.withdrawals = wdInfo.withdrawals;
 
@@ -87,7 +106,9 @@ function simulateScenario(scenario, settings) {
         yearData.taxPayable_thai = taxInfo.tax_thai;
         yearData.oasClawback = taxInfo.oasClawback;
 
-        // Update tracking
+        // Update tracking (Simplification: withdrawals reduce gains pro-rata or FIFO? 
+        // Simulator assumes withdrawals eat into capital first/blended for simplicity in non-reg logic 
+        // unless specific ACB engine added. Just reducing tracker here.)
         currentUnrealizedGains_NonReg = Math.max(0, currentUnrealizedGains_NonReg - (yearData.withdrawals.nonreg || 0));
 
         // 6. Reinvest Surplus
@@ -105,14 +126,11 @@ function simulateScenario(scenario, settings) {
         yearData.closingBalance = { ...currentAssets };
         results.push(yearData);
 
-        // [NEW] Check for Hard Fail (Depletion)
+        // Check for Hard Fail (Depletion)
         if (wdInfo.depleted) {
-            // Money has run out. Set all assets to 0 for subsequent years (if any).
+            // Money has run out. Set all assets to 0 for subsequent years.
             currentAssets = { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0 };
-            // Ensure the final year's closing balance reflects 0
             yearData.closingBalance = { ...currentAssets };
-            
-            // Stop this scenario's simulation loop
             break; 
         }
 
