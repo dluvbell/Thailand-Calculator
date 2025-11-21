@@ -1,10 +1,10 @@
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     8.0.0 (Feature: Registered MC graph containers and added translations)
+ * @version     8.1.0 (Fix: Registered new Spouse Asset inputs and Couple Checkboxes)
  * @file        uiCore.js
  * @created     2025-11-09
- * @description Core UI setup. Registers new MC chart elements and adds graph title translations.
+ * @description Core UI setup. Registers newly added DOM elements for Couple Mode.
  */
 
 // uiCore.js
@@ -42,8 +42,8 @@ const translations = {
         mcMedian: "Median", mcMedianDesc: "(50th percentile outcome)",
         mcP90: "90th Percentile", mcP90Desc: "(Top 10% outcome)",
         mcFinalAssets: "Final Total Assets",
-        mcGraphTitleA: "Monte Carlo Graph (Scenario A)", // [NEW]
-        mcGraphTitleB: "Monte Carlo Graph (Scenario B)", // [NEW]
+        mcGraphTitleA: "Monte Carlo Graph (Scenario A)", 
+        mcGraphTitleB: "Monte Carlo Graph (Scenario B)", 
         runOptimizedMonteCarloBtn: "Run Optimized MC", optimizedMonteCarloRunsLabel: "Optimized Runs:",
         section2Title: "2. Analysis Results", loadingText: "Calculating...",
         toggleGraphBtn: "Show/Hide Graph", toggleTableBtn: "Show/Hide Detailed Data", exportCsvBtn: "Export CSV",
@@ -109,8 +109,8 @@ const translations = {
         mcSuccessRate: "성공률", mcSuccessDesc: "(자산이 고갈되지 않은 비율)",
         mcP10: "하위 10%", mcP10Desc: "(보수적 결과)", mcMedian: "중간값", mcMedianDesc: "(일반적 결과)", mcP90: "상위 10%", mcP90Desc: "(낙관적 결과)",
         mcFinalAssets: "최종 총 자산",
-        mcGraphTitleA: "몬테카를로 그래프 (시나리오 A)", // [NEW]
-        mcGraphTitleB: "몬테카를로 그래프 (시나리오 B)", // [NEW]
+        mcGraphTitleA: "몬테카를로 그래프 (시나리오 A)", 
+        mcGraphTitleB: "몬테카를로 그래프 (시나리오 B)", 
         runOptimizedMonteCarloBtn: "최적화 MC 실행", optimizedMonteCarloRunsLabel: "최적화 횟수:",
         section2Title: "2. 분석 결과", loadingText: "계산 중...",
         toggleGraphBtn: "그래프 보기/숨기기", toggleTableBtn: "상세 데이터 보기/숨기기", exportCsvBtn: "CSV 저장",
@@ -170,6 +170,10 @@ function initializeCore() {
         'manage-income-btn', 'income-modal', 'save-income-btn', 'income-list', 'income-id', 'future-value-display', 'add-income-form', 'income-cola',
         'income-type',
         'asset_rrsp', 'asset_tfsa', 'asset_nonreg', 'asset_lif',
+        // [NEW] Scenario A: Couple/Spouse Fields
+        'isCouple_a',
+        'asset_rrsp_spouse', 'asset_tfsa_spouse', 'asset_nonreg_spouse', 'asset_lif_spouse',
+        
         'return_rrsp', 'return_tfsa', 'return_nonreg', 'return_lif', 'cola',
         'stdev_rrsp', 'stdev_tfsa', 'stdev_nonreg', 'stdev_lif',
         // B
@@ -178,6 +182,10 @@ function initializeCore() {
         'manage-income-btn_b', 'income-modal_b', 'save-income-btn_b', 'income-list_b', 'income-id_b', 'future-value-display_b', 'add-income-form_b', 'income-cola_b',
         'income-type_b',
         'asset_rrsp_b', 'asset_tfsa_b', 'asset_nonreg_b', 'asset_lif_b',
+        // [NEW] Scenario B: Couple/Spouse Fields
+        'isCouple_b',
+        'asset_rrsp_spouse_b', 'asset_tfsa_spouse_b', 'asset_nonreg_spouse_b', 'asset_lif_spouse_b',
+
         'return_rrsp_b', 'return_tfsa_b', 'return_nonreg_b', 'return_lif_b', 'cola_b',
         'stdev_rrsp_b', 'stdev_tfsa_b', 'stdev_nonreg_b', 'stdev_lif_b',
         // Common
@@ -187,7 +195,6 @@ function initializeCore() {
         'welcome-modal', 'disclaimer-agree', 'agree-btn',
         'runOptimizationBtn', 'optimizer-loading-indicator', 'optimizer-loading-text',
         'runMonteCarloBtn', 'monteCarloRunsSelect', 'monte-carlo-results-container',
-        // [MODIFIED] Added new MC graph IDs
         'mc-graph-container-area', 'mc-graph-a-container', 'mc-chart-a', 'mc-graph-b-container', 'mc-chart-b'
     ];
 
@@ -314,7 +321,6 @@ function setLanguage(lang) {
         if (typeof displayMonteCarloResults === 'function') {
             displayMonteCarloResults(lastMCResults.resultsA, lastMCResults.resultsB, lastMCResults.numRuns);
         }
-        // [NEW] Redraw MC charts on language toggle if they exist
         if (typeof drawMonteCarloChart === 'function' && elements.mc_graph_container_area && !elements.mc_graph_container_area.classList.contains('hidden')) {
             drawMonteCarloChart(lastMCResults.resultsA.timeSeries, 'a');
             drawMonteCarloChart(lastMCResults.resultsB.timeSeries, 'b');
@@ -335,7 +341,6 @@ function toggleTheme() {
     document.body.classList.toggle('dark-mode', elements.theme_toggle.checked);
     localStorage.setItem('theme', elements.theme_toggle.checked ? 'dark' : 'light');
     
-    // Redraw charts on theme change
     if (typeof getLastResultDetails === 'function' && getLastResultDetails() && typeof drawD3Chart === 'function' && elements.graph_container && !elements.graph_container.classList.contains('hidden')) {
         drawD3Chart(getLastResultDetails());
     }
