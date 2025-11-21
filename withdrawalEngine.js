@@ -1,16 +1,16 @@
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     7.5.0 (Feature: Implemented RRIF 15% WHT "Safe Limit" logic)
+ * @version     8.0.0 (Feature: Implemented Threshold-based Withdrawal Strategy)
  * @file        withdrawalEngine.js
  * @created     2025-11-09
- * @description Implements RRIF 15% WHT safe limit (max(min*2, 10% FMV)).
+ * @description Implements dynamic withdrawal order based on the $61,224 break-even point.
  */
 
 // withdrawalEngine.js
 
 /**
- * Step 4: Perform Withdrawals (Dual Priority Protocol)
+ * Step 4: Perform Withdrawals (Break-even Point Strategy)
  */
 function step4_PerformWithdrawals(yearData, currentAssets, userAge) {
     yearData.withdrawals = { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0, total: 0, thai_taxable_remittance: 0, wht_deducted: 0 };
@@ -25,9 +25,10 @@ function step4_PerformWithdrawals(yearData, currentAssets, userAge) {
     // PRIORITY A: Cover Thai Living Expenses + PREVIOUS YEAR THAI TAX
     // =================================================================
     let thaiShortfall = (yearData.expenses_thai || 0) + (yearData.expenses_thai_tax || 0);
-    const DEPLETION_THRESHOLD = 0.01; // $0.01 threshold for shortfall
+    const DEPLETION_THRESHOLD = 0.01;
+    const BREAK_EVEN_POINT = 61224; // CAD
 
-    // A1. Net Pension
+    // A1. Net Pension (Tax Exempt in Thailand)
     const pensionUsedForThai = Math.min(thaiShortfall, netPensionAvailable);
     thaiShortfall -= pensionUsedForThai;
     netPensionAvailable -= pensionUsedForThai;
@@ -39,13 +40,8 @@ function step4_PerformWithdrawals(yearData, currentAssets, userAge) {
         thaiTaxableIncomeAvailable -= taxableIncomeUsed;
     }
 
-    // A3-A7. Assets
-    if (thaiShortfall > DEPLETION_THRESHOLD) {
-        thaiShortfall = _withdrawFromTaxDeferredAccount('lif', thaiShortfall, currentAssets, wd, userAge, false);
-    }
-    if (thaiShortfall > DEPLETION_THRESHOLD) {
-        thaiShortfall = _withdrawFromTaxDeferredAccount('rrsp', thaiShortfall, currentAssets, wd, userAge, false);
-    }
+    // A3. Overseas Income (Remitted, Taxable in Thailand)
+    // Note: User can choose to remit this if needed. Engine assumes yes if shortfall exists.
     if (thaiShortfall > DEPLETION_THRESHOLD) {
         const overseasUsedForThai = Math.min(thaiShortfall, overseasIncomeAvailable);
         thaiShortfall -= overseasUsedForThai;
@@ -54,11 +50,24 @@ function step4_PerformWithdrawals(yearData, currentAssets, userAge) {
              wd.thai_taxable_remittance += overseasUsedForThai;
         }
     }
+
+    // [NEW] Dynamic Asset Withdrawal Strategy based on Break-even Point
     if (thaiShortfall > DEPLETION_THRESHOLD) {
-        thaiShortfall = _withdrawFromAccount('nonreg', thaiShortfall, currentAssets, wd, userAge, true);
-    }
-    if (thaiShortfall > DEPLETION_THRESHOLD) {
-        thaiShortfall = _withdrawFromAccount('tfsa', thaiShortfall, currentAssets, wd, userAge, true);
+        if (thaiShortfall > BREAK_EVEN_POINT) {
+            // Case 1: High Spend -> RRSP First (15% Flat is better)
+            // Order: LIF -> RRSP -> Non-Reg -> TFSA
+            thaiShortfall = _withdrawFromTaxDeferredAccount('lif', thaiShortfall, currentAssets, wd, userAge, false);
+            thaiShortfall = _withdrawFromTaxDeferredAccount('rrsp', thaiShortfall, currentAssets, wd, userAge, false);
+            thaiShortfall = _withdrawFromAccount('nonreg', thaiShortfall, currentAssets, wd, userAge, true);
+            thaiShortfall = _withdrawFromAccount('tfsa', thaiShortfall, currentAssets, wd, userAge, true);
+        } else {
+            // Case 2: Low Spend -> Non-Reg First (Thai Progressive Tax < 15%)
+            // Order: Non-Reg -> TFSA -> LIF -> RRSP
+            thaiShortfall = _withdrawFromAccount('nonreg', thaiShortfall, currentAssets, wd, userAge, true);
+            thaiShortfall = _withdrawFromAccount('tfsa', thaiShortfall, currentAssets, wd, userAge, true);
+            thaiShortfall = _withdrawFromTaxDeferredAccount('lif', thaiShortfall, currentAssets, wd, userAge, false);
+            thaiShortfall = _withdrawFromTaxDeferredAccount('rrsp', thaiShortfall, currentAssets, wd, userAge, false);
+        }
     }
 
     // =================================================================
@@ -76,12 +85,14 @@ function step4_PerformWithdrawals(yearData, currentAssets, userAge) {
         const pensionUsedForOverseas = Math.min(overseasShortfall, netPensionAvailable);
         overseasShortfall -= pensionUsedForOverseas;
     }
-    // B3. Thai Taxable Income
+    // B3. Thai Taxable Income (Not remitted, so effectively untaxed by Thailand if kept offshore? No, 'Thai Taxable' implies source. Assume available.)
     if (overseasShortfall > DEPLETION_THRESHOLD) {
         const thaiTaxableUsedForOverseas = Math.min(overseasShortfall, thaiTaxableIncomeAvailable);
         overseasShortfall -= thaiTaxableUsedForOverseas;
     }
-    // B4-B6. Assets
+    
+    // B4. Assets (Fixed Order: Non-Reg First to avoid WHT)
+    // Order: Non-Reg -> TFSA -> LIF -> RRSP
     if (overseasShortfall > DEPLETION_THRESHOLD) {
         overseasShortfall = _withdrawFromAccount('nonreg', overseasShortfall, currentAssets, wd, userAge, false);
     }
@@ -89,13 +100,13 @@ function step4_PerformWithdrawals(yearData, currentAssets, userAge) {
         overseasShortfall = _withdrawFromAccount('tfsa', overseasShortfall, currentAssets, wd, userAge, false);
     }
     if (overseasShortfall > DEPLETION_THRESHOLD) {
-        overseasShortfall = _withdrawFromTaxDeferredAccount('rrsp', overseasShortfall, currentAssets, wd, userAge, false);
-    }
-    if (overseasShortfall > DEPLETION_THRESHOLD) {
         overseasShortfall = _withdrawFromTaxDeferredAccount('lif', overseasShortfall, currentAssets, wd, userAge, false);
     }
+    if (overseasShortfall > DEPLETION_THRESHOLD) {
+        overseasShortfall = _withdrawFromTaxDeferredAccount('rrsp', overseasShortfall, currentAssets, wd, userAge, false);
+    }
 
-    // 4. Apply RRIF/LIF Minimums
+    // 4. Apply RRIF/LIF Minimums (Mandatory)
     _applyRrifLifMinimums(userAge, currentAssets, wd);
 
     wd.total = wd.rrsp + wd.tfsa + wd.nonreg + wd.lif;
@@ -124,8 +135,7 @@ function _withdrawFromAccount(accountType, amountNeeded, assets, wdRecord, age, 
 
 /**
  * Helper: Withdraws from a tax-deferred account (RRSP/LIF) with WHT.
- * Applies 15% WHT at source, so the GROSS amount is removed from the asset,
- * but only the NET amount is credited towards the shortfall.
+ * Applies 15% WHT at source.
  */
 function _withdrawFromTaxDeferredAccount(accountType, netAmountNeeded, assets, wdRecord, age, isThaiTaxable) {
     if (netAmountNeeded <= 0 || !assets || assets[accountType] <= 0) return netAmountNeeded;
@@ -143,20 +153,13 @@ function _withdrawFromTaxDeferredAccount(accountType, netAmountNeeded, assets, w
         grossAvailable = Math.min(available, remainingLifRoom);
     
     } else if (accountType === 'rrsp') {
-        // [NEW] Apply RRIF 15% WHT Safe Limit
-        // This limit is max( (min_rate * 2), (10% * FMV) )
-        const minRate = _getRrifLifMinimumRate(age); // Will be 0 if age < 71
+        // Apply RRIF 15% WHT Safe Limit: max( (min_rate * 2), (10% * FMV) )
+        const minRate = _getRrifLifMinimumRate(age); 
         const limitMinX2 = (openingBalance * minRate) * 2;
         const limitFmv10 = openingBalance * 0.10;
-        
-        // The safe limit is the greater of the two
         const safeLimit = Math.max(limitMinX2, limitFmv10);
-        
-        // Subtract what's already been withdrawn this year
         const grossWdMade = wdRecord.rrsp;
         const remainingSafeLimitRoom = Math.max(0, safeLimit - grossWdMade);
-        
-        // The available amount is now the lesser of the actual balance and the remaining safe limit
         grossAvailable = Math.min(available, remainingSafeLimitRoom);
     }
     
@@ -168,6 +171,9 @@ function _withdrawFromTaxDeferredAccount(accountType, netAmountNeeded, assets, w
         assets[accountType] -= grossWithdrawAmount;
         wdRecord[accountType] += grossWithdrawAmount;
         wdRecord.wht_deducted += whtDeducted;
+        // [NOTE] RRSP/LIF withdrawals are generally Tax Exempt in Thailand due to treaty if WHT paid.
+        // But if user wants to treat as taxable for some reason, isThaiTaxable flag controls it.
+        // In our logic, we usually set isThaiTaxable = false for these because WHT covers it.
         if (isThaiTaxable) wdRecord.thai_taxable_remittance += netWithdrawAmount; 
         return netAmountNeeded - netWithdrawAmount;
     }
@@ -175,7 +181,7 @@ function _withdrawFromTaxDeferredAccount(accountType, netAmountNeeded, assets, w
 }
 
 /**
- * [NEW] Helper: Gets the minimum withdrawal rate for RRIF/LIF.
+ * Helper: Gets the minimum withdrawal rate for RRIF/LIF.
  */
 function _getRrifLifMinimumRate(age) {
     if (age < 71) return 0;
@@ -185,7 +191,6 @@ function _getRrifLifMinimumRate(age) {
 
 /** Helper: RRIF/LIF minimums */
 function _applyRrifLifMinimums(age, assets, wdRecord) {
-    // [MODIFIED] Use new helper function
     const minRate = _getRrifLifMinimumRate(age);
     if (minRate === 0 || !assets) return;
 
