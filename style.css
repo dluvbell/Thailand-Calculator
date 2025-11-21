@@ -379,6 +379,14 @@ button.delete-btn:hover { background-color: #a71d2a; }
     gap: 1rem;
 }
 
+/* [NEW] Asset Grid Style (4 columns) */
+.form-grid-assets {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
 
 /* ====================================================== */
 /* 인출 전략 레이아웃 (v2.4.3) */
