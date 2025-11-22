@@ -1,13 +1,9 @@
-{
-type: uploaded file
-fileName: engineCore.js
-fullContent:
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     9.5.2 (Fix: Syntax Error & Robust Expense Logic)
+ * @version     9.5.3 (Fix: Clean Code - Removed metadata wrapper & Robust Expense Logic)
  * @file        engineCore.js
- * @description Core simulation loop. Fixes trailing brace syntax error and ensures expenses persist across years.
+ * @description Core simulation loop. Fixes syntax errors and ensures expenses persist across years.
  */
 
 // engineCore.js
@@ -243,5 +239,4 @@ function step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouse
     yearData.expenses_overseas = overseasExpenses;
     // Initialize total expenses with living expenses (Tax added later in main loop)
     yearData.expenses = thaiExpenses + overseasExpenses;
-}
 }
