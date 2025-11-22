@@ -1,9 +1,13 @@
+{
+type: uploaded file
+fileName: engineCore.js
+fullContent:
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     9.9.1 (Fix: Ensure Expenses are Saved to YearData & Prevent Reinvestment Loop)
+ * @version     9.9.2 (Fix: Correct tax property reference tax_thai to ensure tax is paid from assets)
  * @file        engineCore.js
- * @description Core simulation loop. Fixes bug where expenses were calculated for WD but not saved for reporting/cashflow.
+ * @description Core simulation loop. Fixes bug where previous year's tax was not carried over due to property name mismatch.
  */
 
 // engineCore.js
@@ -116,7 +120,7 @@ function simulateScenario(scenario, settings, label = "") {
         step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouseBirthYear);
         
         // Add Tax Bill from previous year to total expenses
-        // [FIX] Ensure numbers
+        // [FIX] Ensure numbers. This now correctly adds the tax bill.
         yearData.expenses = (yearData.expenses || 0) + (yearData.expenses_thai_tax || 0);
 
         // --- 4. Perform Withdrawals (Water-filling) ---
@@ -143,8 +147,7 @@ function simulateScenario(scenario, settings, label = "") {
         yearData.oasClawback = userTaxInfo.oasClawback + spouseTaxInfo.oasClawback;
 
         // --- 6. Reinvest Surplus ---
-        // [CRITICAL LOGIC] Total Cash Out MUST include living expenses.
-        // If yearData.expenses was 0 (due to bug), we would be reinvesting the withdrawal!
+        // Total Cash Out includes expenses (which now includes tax bill).
         const totalCashOut = yearData.expenses + yearData.taxPayable_can; 
         const totalCashIn = yearData.income.total + yearData.withdrawals.total;
         const netCashflow = totalCashIn - totalCashOut;
@@ -166,7 +169,8 @@ function simulateScenario(scenario, settings, label = "") {
         results.push(yearData);
 
         // Store tax for next year's expense
-        prevYearThaiTax_User = yearData.user.tax.thai;
+        // [CRITICAL FIX] Use correct property '.tax_thai' (not .thai) to persist tax bill
+        prevYearThaiTax_User = yearData.user.tax.tax_thai;
         prevYearThaiTax_Spouse = spouseTaxInfo.tax_thai;
 
         if (wdInfo.depleted) break; 
@@ -241,4 +245,5 @@ function step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouse
     yearData.expenses_overseas = overseasExpenses;
     // Initialize total expenses (before tax)
     yearData.expenses = thaiExpenses + overseasExpenses;
+}
 }
