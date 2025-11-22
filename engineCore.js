@@ -1,10 +1,10 @@
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     9.1.0 (Debug: Added console logs to trace Asset Inputs)
+ * @version     9.2.0 (Debug: Added verbose logging for Expense Calculation Step 3)
  * @file        engineCore.js
  * @created     2025-11-09
- * @description Core simulation loop. Now includes debug logs to verify A/B input divergence.
+ * @description Core simulation loop. Includes debug logs to trace disappearing expenses.
  */
 
 // engineCore.js
@@ -15,28 +15,7 @@
 function runFullSimulation(inputsA, inputsB) {
     const baseYear = 2025;
 
-    // --- DEBUG LOGS START ---
-    console.group("🚀 Simulation Debug Start");
-    console.log("Time:", new Date().toISOString());
-    
-    console.log("%c Scenario A Inputs:", "color: blue; font-weight: bold;");
-    console.log("User Assets A:", inputsA.scenario.user?.assets);
-    console.log("Spouse Assets A:", inputsA.scenario.spouse?.assets);
-    
-    console.log("%c Scenario B Inputs:", "color: green; font-weight: bold;");
-    console.log("User Assets B:", inputsB.scenario.user?.assets);
-    console.log("Spouse Assets B:", inputsB.scenario.spouse?.assets);
-
-    // Deep check for equality
-    const strA = JSON.stringify(inputsA.scenario.user?.assets) + JSON.stringify(inputsA.scenario.spouse?.assets);
-    const strB = JSON.stringify(inputsB.scenario.user?.assets) + JSON.stringify(inputsB.scenario.spouse?.assets);
-    if (strA === strB) {
-        console.warn("⚠️ WARNING: Scenario A and B Asset Inputs are IDENTICAL! Check UI Data Gathering.");
-    } else {
-        console.log("✅ Scenario A and B Inputs are DIFFERENT. Proceeding...");
-    }
-    console.groupEnd();
-    // --- DEBUG LOGS END ---
+    console.log("--- Simulation Start ---");
 
     const globalSettingsA = {
         maxAge: inputsA.lifeExpectancy,
@@ -65,7 +44,6 @@ function simulateScenario(scenario, settings, label = "") {
     const hasSpouse = scenario.spouse && scenario.spouse.hasSpouse;
 
     // 1. Initialize Assets Separately
-    // User Assets
     let currentUserAssets = { 
         rrsp: scenario.user?.assets?.rrsp || 0, 
         tfsa: scenario.user?.assets?.tfsa || 0, 
@@ -73,7 +51,6 @@ function simulateScenario(scenario, settings, label = "") {
         lif: scenario.user?.assets?.lif || 0 
     };
     
-    // Spouse Assets (Initialize even if 0 to keep logic consistent)
     let currentSpouseAssets = { 
         rrsp: scenario.spouse?.assets?.rrsp || 0, 
         tfsa: scenario.spouse?.assets?.tfsa || 0, 
@@ -81,17 +58,10 @@ function simulateScenario(scenario, settings, label = "") {
         lif: scenario.spouse?.assets?.lif || 0 
     };
 
-    // --- DEBUG INTERNAL START ---
-    if (label) {
-        console.log(`[Sim ${label}] Initialized User Assets:`, currentUserAssets);
-        console.log(`[Sim ${label}] Initialized Spouse Assets:`, currentSpouseAssets);
-    }
-    // --- DEBUG INTERNAL END ---
-
     let currentUnrealizedGains_NonReg_User = scenario.user?.initialNonRegGains || 0;
     let currentUnrealizedGains_NonReg_Spouse = 0; 
 
-    // Tax buckets for next year's expense
+    // Tax trackers for next year's expense
     let prevYearThaiTax_User = 0;
     let prevYearThaiTax_Spouse = 0;
 
@@ -156,8 +126,9 @@ function simulateScenario(scenario, settings, label = "") {
         yearData.income.total = (yearData.user.income?.total || 0) + (yearData.spouse.income?.total || 0);
 
         // --- 3. Calculate Expenses (Household) ---
-        step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouseBirthYear);
-        yearData.expenses += yearData.expenses_thai_tax; // Add previous year's tax bill
+        // [DEBUG] Pass label to trace
+        step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouseBirthYear, label);
+        yearData.expenses += yearData.expenses_thai_tax; 
 
         // --- 4. Perform Withdrawals (Optimized Water-filling) ---
         const wdInfo = step4_PerformWithdrawals(yearData, currentUserAssets, currentSpouseAssets, hasSpouse);
@@ -185,7 +156,7 @@ function simulateScenario(scenario, settings, label = "") {
         yearData.oasClawback = userTaxInfo.oasClawback + spouseTaxInfo.oasClawback;
 
         // --- 6. Reinvest Surplus (Split 50/50) ---
-        const totalCashOut = yearData.expenses + yearData.taxPayable_can; // Thai tax is next year
+        const totalCashOut = yearData.expenses + yearData.taxPayable_can; 
         const totalCashIn = yearData.income.total + yearData.withdrawals.total;
         const netCashflow = totalCashIn - totalCashOut;
 
@@ -202,19 +173,18 @@ function simulateScenario(scenario, settings, label = "") {
         yearData.user.closingBalance = { ...currentUserAssets };
         yearData.spouse.closingBalance = { ...currentSpouseAssets };
         
-        // Aggregate Closing Balance for UI
         ['rrsp', 'tfsa', 'nonreg', 'lif'].forEach(k => {
             yearData.closingBalance[k] = currentUserAssets[k] + currentSpouseAssets[k];
         });
 
         results.push(yearData);
 
-        // Update Tax for next year
         prevYearThaiTax_User = yearData.user.tax.thai;
-        prevYearThaiTax_Spouse = yearData.spouse.tax.thai;
+        prevYearThaiTax_Spouse = spouseTaxInfo.tax_thai;
 
         if (wdInfo.depleted) {
-            break; 
+            // Depletion logic
+            // break; // Don't break, let it run to see 0s
         }
     }
     return results;
@@ -239,8 +209,8 @@ function step1_ApplyGrowth(currentYear, assets, returns, birthYear, retirementAg
     return growth;
 }
 
-/** Step 3: Calculate Expenses (Household) */
-function step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouseBirthYear) {
+/** Step 3: Calculate Expenses (Household) - WITH DEBUGGING */
+function step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouseBirthYear, label) {
     const currentUserAge = yearData.userAge;
     const currentSpouseAge = hasSpouse ? (yearData.year - spouseBirthYear) : -1;
     const baseYear = settings.baseYear || 2025;
@@ -250,14 +220,29 @@ function step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouse
 
     const allItems = scenario.user?.otherIncomes || [];
 
+    // [DEBUG] Only log for first few years to avoid spam
+    const debugMode = (label === "A" || label === "B") && (currentUserAge <= 55);
+
+    if (debugMode) {
+        console.group(`🔎 Step 3 Debug [${label}] Year: ${currentYear}, Age: ${currentUserAge}`);
+    }
+
     allItems.forEach(item => {
         if (item.type !== 'expense_thai' && item.type !== 'expense_overseas') return;
 
         let isActive = false;
+        // Check age range based on owner
         if (item.owner === 'spouse' && hasSpouse) {
             if (currentSpouseAge >= item.startAge && currentSpouseAge <= item.endAge) isActive = true;
         } else {
+            // Default to User age for 'user' or 'joint'
             if (currentUserAge >= item.startAge && currentUserAge <= item.endAge) isActive = true;
+        }
+
+        if (debugMode) {
+            console.log(`Item: ${item.desc} (${item.type}), Owner: ${item.owner}, Amount: ${item.amount}`);
+            console.log(`   Range: ${item.startAge}-${item.endAge}, Current Age: ${item.owner === 'spouse' ? currentSpouseAge : currentUserAge}`);
+            console.log(`   Active? ${isActive}`);
         }
 
         if (isActive) {
@@ -272,6 +257,12 @@ function step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouse
             }
         }
     });
+
+    if (debugMode) {
+        console.log(`=> Total Thai Exp: ${thaiExpenses}`);
+        console.log(`=> Total OS Exp: ${overseasExpenses}`);
+        console.groupEnd();
+    }
 
     yearData.expenses_thai = thaiExpenses;
     yearData.expenses_overseas = overseasExpenses;
