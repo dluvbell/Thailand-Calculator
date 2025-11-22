@@ -1,9 +1,9 @@
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     9.3.0 (Fix: Robust Type Casting & Expense Recording)
+ * @version     9.4.0 (Fix: Strict Number Casting for Expense Age Logic)
  * @file        engineCore.js
- * @description Core simulation loop. Includes strict type casting to prevent calculation errors.
+ * @description Core simulation loop. Ensures expenses persist past year 1 by fixing type coercion issues.
  */
 
 // engineCore.js
@@ -32,9 +32,10 @@ function runFullSimulation(inputsA, inputsB) {
 
 function simulateScenario(scenario, settings, label = "") {
     const results = [];
-    const hasSpouse = scenario.spouse && scenario.spouse.hasSpouse;
+    // Ensure boolean
+    const hasSpouse = (scenario.spouse && scenario.spouse.hasSpouse === true);
 
-    // 1. Initialize Assets (Strict Type Casting)
+    // 1. Initialize Assets (Force Numbers)
     let currentUserAssets = { 
         rrsp: Number(scenario.user?.assets?.rrsp) || 0, 
         tfsa: Number(scenario.user?.assets?.tfsa) || 0, 
@@ -52,10 +53,10 @@ function simulateScenario(scenario, settings, label = "") {
     let prevYearThaiTax_User = 0;
     let prevYearThaiTax_Spouse = 0;
 
-    const userRetirementAge = parseInt(scenario.retirementAge) || 60;
-    const maxAge = parseInt(settings.maxAge) || 95;
-    const userBirthYear = parseInt(scenario.user?.birthYear) || 1980;
-    const spouseBirthYear = hasSpouse ? (parseInt(scenario.spouse.birthYear) || userBirthYear) : userBirthYear;
+    const userRetirementAge = Number(scenario.retirementAge) || 60;
+    const maxAge = Number(settings.maxAge) || 95;
+    const userBirthYear = Number(scenario.user?.birthYear) || 1980;
+    const spouseBirthYear = hasSpouse ? (Number(scenario.spouse.birthYear) || userBirthYear) : userBirthYear;
 
     const startYear = userBirthYear + userRetirementAge;
     const endYear = userBirthYear + maxAge;
@@ -65,7 +66,7 @@ function simulateScenario(scenario, settings, label = "") {
         
         if (userAge > maxAge) break;
 
-        // Data Structure Initialization
+        // Initialize Data
         const yearData = {
             year: currentYear, 
             userAge: userAge,
@@ -86,7 +87,7 @@ function simulateScenario(scenario, settings, label = "") {
             expenses: 0, expenses_thai: 0, expenses_overseas: 0,
             expenses_thai_tax: prevYearThaiTax_User + prevYearThaiTax_Spouse,
             
-            // Aggregates for UI
+            // Aggregates
             growth: { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0 },
             income: { total: 0 },
             withdrawals: { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0, total: 0 },
@@ -109,16 +110,15 @@ function simulateScenario(scenario, settings, label = "") {
         }
         yearData.income.total = (yearData.user.income?.total || 0) + (yearData.spouse.income?.total || 0);
 
-        // --- 3. Calculate Expenses ---
-        // Passing hasSpouse and birth years to ensure correct age checking
+        // --- 3. Calculate Expenses (FIXED) ---
         step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouseBirthYear);
-        // Add tax bill from previous year to total expenses
+        
+        // Add Tax Bill from previous year
         yearData.expenses += yearData.expenses_thai_tax; 
 
-        // --- 4. Perform Withdrawals ---
+        // --- 4. Perform Withdrawals (Water-filling) ---
         const wdInfo = step4_PerformWithdrawals(yearData, currentUserAssets, currentSpouseAssets, hasSpouse);
         
-        // Aggregate Withdrawals
         ['rrsp', 'tfsa', 'nonreg', 'lif'].forEach(k => {
             yearData.withdrawals[k] = (yearData.user.withdrawals[k] || 0) + (yearData.spouse.withdrawals[k] || 0);
         });
@@ -153,16 +153,14 @@ function simulateScenario(scenario, settings, label = "") {
             yearData.reinvested = 0;
         }
 
-        // Update Closing Balances
+        // Update Closing
         yearData.user.closingBalance = { ...currentUserAssets };
         yearData.spouse.closingBalance = { ...currentSpouseAssets };
-        ['rrsp', 'tfsa', 'nonreg', 'lif'].forEach(k => {
-            yearData.closingBalance[k] = currentUserAssets[k] + currentSpouseAssets[k];
-        });
+        ['rrsp', 'tfsa', 'nonreg', 'lif'].forEach(k => yearData.closingBalance[k] = currentUserAssets[k] + currentSpouseAssets[k]);
 
         results.push(yearData);
 
-        // Carry forward tax bill
+        // Store tax for next year's expense
         prevYearThaiTax_User = yearData.user.tax.thai;
         prevYearThaiTax_Spouse = spouseTaxInfo.tax_thai;
 
@@ -186,11 +184,12 @@ function step1_ApplyGrowth(currentYear, assets, returns) {
     return growth;
 }
 
+// [FIXED] Robust Expense Calculation with Type Safety
 function step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouseBirthYear) {
-    const currentUserAge = yearData.userAge;
-    const currentSpouseAge = hasSpouse ? (yearData.year - spouseBirthYear) : -1;
-    const baseYear = settings.baseYear || 2025;
-    const currentYear = yearData.year;
+    const currentUserAge = Number(yearData.userAge);
+    const currentSpouseAge = hasSpouse ? (Number(yearData.year) - Number(spouseBirthYear)) : -1;
+    const baseYear = Number(settings.baseYear) || 2025;
+    const currentYear = Number(yearData.year);
     
     let thaiExpenses = 0;
     let overseasExpenses = 0;
@@ -201,14 +200,15 @@ function step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouse
         if (item.type !== 'expense_thai' && item.type !== 'expense_overseas') return;
 
         let isActive = false;
-        const startAge = parseInt(item.startAge) || 0;
-        const endAge = parseInt(item.endAge) || 120;
+        // FORCE NUMBER CONVERSION for comparison
+        const startAge = Number(item.startAge);
+        const endAge = Number(item.endAge);
 
-        // Robust Owner/Age Logic
+        // Determine who owns this expense bucket?
+        // If 'spouse', check spouse age. Else check user age.
         if (item.owner === 'spouse' && hasSpouse) {
             if (currentSpouseAge >= startAge && currentSpouseAge <= endAge) isActive = true;
         } else {
-            // Default to User age for 'user' or 'joint'
             if (currentUserAge >= startAge && currentUserAge <= endAge) isActive = true;
         }
 
@@ -226,7 +226,6 @@ function step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouse
         }
     });
 
-    // Explicit assignment to ensure data persistence
     yearData.expenses_thai = thaiExpenses;
     yearData.expenses_overseas = overseasExpenses;
     yearData.expenses = thaiExpenses + overseasExpenses;
