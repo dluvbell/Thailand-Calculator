@@ -5,9 +5,9 @@ fullContent:
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     9.5.0 (Fix: Bulletproof Expense Age Logic to prevent disappearance after Year 1)
+ * @version     9.5.1 (Fix: Syntax Error - Removed trailing brace)
  * @file        engineCore.js
- * @description Core simulation loop. Fixes type coercion and fallbacks for start/end ages in expenses.
+ * @description Core simulation loop. Fixes type coercion for expenses and ensures correct syntax.
  */
 
 // engineCore.js
@@ -191,7 +191,6 @@ function step1_ApplyGrowth(currentYear, assets, returns) {
 // [FIXED] Robust Expense Calculation with Type Safety
 function step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouseBirthYear) {
     const currentUserAge = Number(yearData.userAge);
-    // Correctly calculate spouse age if exists, otherwise -1
     const currentSpouseAge = hasSpouse ? (Number(yearData.year) - Number(spouseBirthYear)) : -1;
     
     const baseYear = Number(settings.baseYear) || 2025;
@@ -236,7 +235,5 @@ function step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouse
 
     yearData.expenses_thai = thaiExpenses;
     yearData.expenses_overseas = overseasExpenses;
-    // Initialize total expenses with living expenses (Tax added later in main loop)
     yearData.expenses = thaiExpenses + overseasExpenses;
-}
 }
