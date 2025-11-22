@@ -1,9 +1,9 @@
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     9.4.0 (Fix: Robust Type Casting & Expense Recording)
+ * @version     9.5.3 (Fix: Clean Code - Removed metadata wrapper & Robust Expense Logic)
  * @file        engineCore.js
- * @description Core simulation loop. Ensures expenses persist past year 1 by fixing type coercion issues.
+ * @description Core simulation loop. Fixes syntax errors and ensures expenses persist across years.
  */
 
 // engineCore.js
@@ -35,7 +35,7 @@ function simulateScenario(scenario, settings, label = "") {
     // Ensure boolean
     const hasSpouse = (scenario.spouse && scenario.spouse.hasSpouse === true);
 
-    // 1. Initialize Assets (Strict Type Casting)
+    // 1. Initialize Assets (Force Numbers)
     let currentUserAssets = { 
         rrsp: Number(scenario.user?.assets?.rrsp) || 0, 
         tfsa: Number(scenario.user?.assets?.tfsa) || 0, 
@@ -53,10 +53,11 @@ function simulateScenario(scenario, settings, label = "") {
     let prevYearThaiTax_User = 0;
     let prevYearThaiTax_Spouse = 0;
 
-    const userRetirementAge = parseInt(scenario.retirementAge) || 60;
-    const maxAge = parseInt(settings.maxAge) || 95;
-    const userBirthYear = parseInt(scenario.user?.birthYear) || 1980;
-    const spouseBirthYear = hasSpouse ? (parseInt(scenario.spouse.birthYear) || userBirthYear) : userBirthYear;
+    const userRetirementAge = Number(scenario.retirementAge) || 60;
+    const maxAge = Number(settings.maxAge) || 95;
+    const userBirthYear = Number(scenario.user?.birthYear) || 1980;
+    // Safely get spouse birth year
+    const spouseBirthYear = hasSpouse ? (Number(scenario.spouse?.birthYear) || userBirthYear) : userBirthYear;
 
     const startYear = userBirthYear + userRetirementAge;
     const endYear = userBirthYear + maxAge;
@@ -66,7 +67,7 @@ function simulateScenario(scenario, settings, label = "") {
         
         if (userAge > maxAge) break;
 
-        // Data Structure Initialization
+        // Initialize Data
         const yearData = {
             year: currentYear, 
             userAge: userAge,
@@ -87,7 +88,7 @@ function simulateScenario(scenario, settings, label = "") {
             expenses: 0, expenses_thai: 0, expenses_overseas: 0,
             expenses_thai_tax: prevYearThaiTax_User + prevYearThaiTax_Spouse,
             
-            // Aggregates for UI
+            // Aggregates
             growth: { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0 },
             income: { total: 0 },
             withdrawals: { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0, total: 0 },
@@ -110,16 +111,15 @@ function simulateScenario(scenario, settings, label = "") {
         }
         yearData.income.total = (yearData.user.income?.total || 0) + (yearData.spouse.income?.total || 0);
 
-        // --- 3. Calculate Expenses ---
-        // Passing hasSpouse and birth years to ensure correct age checking
+        // --- 3. Calculate Expenses (FIXED & ROBUST) ---
         step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouseBirthYear);
-        // Add tax bill from previous year to total expenses
+        
+        // Add Tax Bill from previous year to total expenses
         yearData.expenses += yearData.expenses_thai_tax; 
 
         // --- 4. Perform Withdrawals (Water-filling) ---
         const wdInfo = step4_PerformWithdrawals(yearData, currentUserAssets, currentSpouseAssets, hasSpouse);
         
-        // Aggregate Withdrawals
         ['rrsp', 'tfsa', 'nonreg', 'lif'].forEach(k => {
             yearData.withdrawals[k] = (yearData.user.withdrawals[k] || 0) + (yearData.spouse.withdrawals[k] || 0);
         });
@@ -154,14 +154,14 @@ function simulateScenario(scenario, settings, label = "") {
             yearData.reinvested = 0;
         }
 
-        // Update Closing Balances
+        // Update Closing
         yearData.user.closingBalance = { ...currentUserAssets };
         yearData.spouse.closingBalance = { ...currentSpouseAssets };
         ['rrsp', 'tfsa', 'nonreg', 'lif'].forEach(k => yearData.closingBalance[k] = currentUserAssets[k] + currentSpouseAssets[k]);
 
         results.push(yearData);
 
-        // Carry forward tax bill
+        // Store tax for next year's expense
         prevYearThaiTax_User = yearData.user.tax.thai;
         prevYearThaiTax_Spouse = spouseTaxInfo.tax_thai;
 
@@ -187,49 +187,56 @@ function step1_ApplyGrowth(currentYear, assets, returns) {
 
 // [FIXED] Robust Expense Calculation with Type Safety
 function step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouseBirthYear) {
-    const currentUserAge = Number(yearData.userAge);
-    const currentSpouseAge = hasSpouse ? (Number(yearData.year) - Number(spouseBirthYear)) : -1;
-    const baseYear = Number(settings.baseYear) || 2025;
     const currentYear = Number(yearData.year);
+    const baseYear = Number(settings.baseYear) || 2025;
+    
+    const currentUserAge = Number(yearData.userAge);
+    // Calculate spouse age properly
+    const currentSpouseAge = hasSpouse ? (currentYear - Number(spouseBirthYear)) : -100;
+
+    const allItems = scenario.user?.otherIncomes || [];
     
     let thaiExpenses = 0;
     let overseasExpenses = 0;
 
-    const allItems = scenario.user?.otherIncomes || [];
+    for (const item of allItems) {
+         // Only process expenses
+         if (item.type !== 'expense_thai' && item.type !== 'expense_overseas') continue;
 
-    allItems.forEach(item => {
-        if (item.type !== 'expense_thai' && item.type !== 'expense_overseas') return;
+         // Force safe numbers. If endAge is missing or 0, default to 110 to ensure it persists.
+         const startAge = Number(item.startAge) || 0;
+         const endAgeRaw = Number(item.endAge);
+         const endAge = (endAgeRaw > 0) ? endAgeRaw : 110;
+         
+         const amount = Number(item.amount) || 0;
+         const cola = Number(item.cola) || 0;
 
-        let isActive = false;
-        // FORCE NUMBER CONVERSION for comparison
-        const startAge = Number(item.startAge);
-        const endAge = Number(item.endAge);
+         let isActive = false;
+         
+         // Check Ownership & Age Range
+         if (item.owner === 'spouse' && hasSpouse) {
+             if (currentSpouseAge >= startAge && currentSpouseAge <= endAge) isActive = true;
+         } else {
+             // Default to user for 'user', 'joint', or undefined owner
+             // Note: If 'spouse' owner but hasSpouse=false, it falls here (User pays).
+             // This prevents expenses from disappearing if spouse mode is toggled off.
+             if (currentUserAge >= startAge && currentUserAge <= endAge) isActive = true;
+         }
 
-        // Determine who owns this expense bucket?
-        // If 'spouse', check spouse age. Else check user age.
-        if (item.owner === 'spouse' && hasSpouse) {
-            if (currentSpouseAge >= startAge && currentSpouseAge <= endAge) isActive = true;
-        } else {
-            // Default to User age for 'user' or 'joint'
-            if (currentUserAge >= startAge && currentUserAge <= endAge) isActive = true;
-        }
+         if (isActive) {
+             const yearsSinceBase = Math.max(0, currentYear - baseYear);
+             const inflatedAmount = amount * Math.pow(1 + cola, yearsSinceBase);
+             
+             if (item.type === 'expense_thai') {
+                 thaiExpenses += inflatedAmount;
+             } else {
+                 overseasExpenses += inflatedAmount;
+             }
+         }
+    }
 
-        if (isActive) {
-            const yearsSinceBase = Math.max(0, currentYear - baseYear);
-            const itemColaRate = Number(item.cola) || 0;
-            const amountPV = Number(item.amount) || 0;
-            const currentYearAmount = amountPV * Math.pow(1 + itemColaRate, yearsSinceBase);
-
-            if (item.type === 'expense_thai') {
-                thaiExpenses += currentYearAmount;
-            } else {
-                overseasExpenses += currentYearAmount;
-            }
-        }
-    });
-
-    // Explicit assignment to ensure data persistence
     yearData.expenses_thai = thaiExpenses;
     yearData.expenses_overseas = overseasExpenses;
+    // Initialize total expenses with living expenses (Tax added later in main loop)
     yearData.expenses = thaiExpenses + overseasExpenses;
 }
