@@ -1,9 +1,9 @@
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     9.8.0 (Fix: Connect Settings to Withdrawal Engine & Robust Logic)
+ * @version     9.9.1 (Fix: Ensure Expenses are Saved to YearData & Prevent Reinvestment Loop)
  * @file        engineCore.js
- * @description Core simulation loop. Bridges Exchange Rate settings to Withdrawal Engine.
+ * @description Core simulation loop. Fixes bug where expenses were calculated for WD but not saved for reporting/cashflow.
  */
 
 // engineCore.js
@@ -112,13 +112,14 @@ function simulateScenario(scenario, settings, label = "") {
         yearData.income.total = (yearData.user.income?.total || 0) + (yearData.spouse.income?.total || 0);
 
         // --- 3. Calculate Expenses (FIXED & ROBUST) ---
+        // This function updates yearData.expenses, yearData.expenses_thai, yearData.expenses_overseas
         step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouseBirthYear);
         
         // Add Tax Bill from previous year to total expenses
-        yearData.expenses += yearData.expenses_thai_tax; 
+        // [FIX] Ensure numbers
+        yearData.expenses = (yearData.expenses || 0) + (yearData.expenses_thai_tax || 0);
 
         // --- 4. Perform Withdrawals (Water-filling) ---
-        // [CRITICAL FIX] Pass 'settings' to access Exchange Rate in Withdrawal Engine
         const wdInfo = step4_PerformWithdrawals(yearData, currentUserAssets, currentSpouseAssets, hasSpouse, settings);
         
         ['rrsp', 'tfsa', 'nonreg', 'lif'].forEach(k => {
@@ -142,7 +143,9 @@ function simulateScenario(scenario, settings, label = "") {
         yearData.oasClawback = userTaxInfo.oasClawback + spouseTaxInfo.oasClawback;
 
         // --- 6. Reinvest Surplus ---
-        const totalCashOut = yearData.expenses + yearData.taxPayable_can; // Thai Tax paid next year
+        // [CRITICAL LOGIC] Total Cash Out MUST include living expenses.
+        // If yearData.expenses was 0 (due to bug), we would be reinvesting the withdrawal!
+        const totalCashOut = yearData.expenses + yearData.taxPayable_can; 
         const totalCashIn = yearData.income.total + yearData.withdrawals.total;
         const netCashflow = totalCashIn - totalCashOut;
 
@@ -192,7 +195,6 @@ function step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouse
     const baseYear = Number(settings.baseYear) || 2025;
     
     const currentUserAge = Number(yearData.userAge);
-    // Calculate spouse age properly
     const currentSpouseAge = hasSpouse ? (currentYear - Number(spouseBirthYear)) : -100;
 
     const allItems = scenario.user?.otherIncomes || [];
@@ -219,8 +221,6 @@ function step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouse
              if (currentSpouseAge >= startAge && currentSpouseAge <= endAge) isActive = true;
          } else {
              // Default to user for 'user', 'joint', or undefined owner
-             // Note: If 'spouse' owner but hasSpouse=false, it falls here (User pays).
-             // This prevents expenses from disappearing if spouse mode is toggled off.
              if (currentUserAge >= startAge && currentUserAge <= endAge) isActive = true;
          }
 
@@ -236,8 +236,9 @@ function step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouse
          }
     }
 
+    // [FIX] Explicitly update yearData properties
     yearData.expenses_thai = thaiExpenses;
     yearData.expenses_overseas = overseasExpenses;
-    // Initialize total expenses with living expenses (Tax added later in main loop)
+    // Initialize total expenses (before tax)
     yearData.expenses = thaiExpenses + overseasExpenses;
 }
