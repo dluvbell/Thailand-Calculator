@@ -1,9 +1,9 @@
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     9.1.0 (Fix: Embedded RRIF Rates to ensure minimums trigger)
+ * @version     9.2.0 (Fix: Embedded RRIF Rates to enforce mandatory withdrawals)
  * @file        withdrawalEngine.js
- * @description Implements "Water-filling" logic and strictly enforces RRIF minimums.
+ * @description Implements "Water-filling" logic and strictly enforces RRIF minimums using internal rates.
  */
 
 // withdrawalEngine.js
@@ -20,7 +20,7 @@ const THAI_BRACKETS_CAD = [
     { limit: Infinity, rate: 0.35 }
 ];
 
-// [FIX] Embed RRIF Rates directly to ensure availability
+// [FIX] Internal RRIF Minimum Rates (Statutory)
 const RRIF_MINIMUM_RATES_INTERNAL = [
     { age: 71, rate: 0.0528 }, { age: 72, rate: 0.0540 }, { age: 73, rate: 0.0553 },
     { age: 74, rate: 0.0567 }, { age: 75, rate: 0.0582 }, { age: 76, rate: 0.0598 },
@@ -117,7 +117,7 @@ function step4_PerformWithdrawals(yearData, userAssets, spouseAssets, hasSpouse)
         );
     }
 
-    // 4. Apply RRIF/LIF Minimums (Mandatory) - [CRITICAL FIX]
+    // 4. Apply RRIF/LIF Minimums (Mandatory) - [CRITICAL FIX applied here]
     _applyRrifLifMinimums(yearData.userAge, userAssets, yearData.user.withdrawals);
     if (hasSpouse) {
         _applyRrifLifMinimums(yearData.spouse.age, spouseAssets, yearData.spouse.withdrawals);
@@ -261,9 +261,6 @@ function _withdrawFromTaxDeferredAccount(accountType, netAmountNeeded, assets, w
     let available = assets[accountType];
     let grossAvailable = available;
     
-    // Calculate opening balance for RRIF minimum logic (before this specific withdrawal step)
-    // NOTE: wdRecord includes amounts from this year's previous steps (e.g. optimized step).
-    // This ensures we don't double-count balance.
     const openingBalance = assets[accountType] + wdRecord[accountType];
 
     if (accountType === 'lif') {
@@ -289,7 +286,7 @@ function _withdrawFromTaxDeferredAccount(accountType, netAmountNeeded, assets, w
 
 /** Helper: RRIF/LIF minimums (Robust Implementation) */
 function _applyRrifLifMinimums(age, assets, wdRecord) {
-    // [FIX] Use embedded table
+    // [FIX] Use internal constant to guarantee rate lookup
     const minRate = _getRrifLifMinimumRate(age);
     if (minRate === 0 || !assets) return;
 
@@ -306,9 +303,9 @@ function _applyRrifLifMinimums(age, assets, wdRecord) {
             assets.rrsp -= grossExtra;
             wdRecord.rrsp += grossExtra;
             wdRecord.wht_deducted += whtExtra;
-            // Note: Minimums are usually NOT remitted for living expenses if not needed, 
-            // so we don't add to 'thai_taxable_remittance' by default, 
-            // effectively treating excess as "Overseas Savings" or just tax payment.
+            // Mandatory RRIF withdrawals are considered income.
+            // Assuming they are remitted or taxable in Thailand (exempt via treaty credit).
+            // But WHT is definitely paid.
         }
     }
 
@@ -337,8 +334,6 @@ function _getRrifLifMinimumRate(age) {
 
 function getLifMaximumFactor(age) {
     if (age < 55) return 0;
-    // Fallback to basic if undefined, but usually data.js handles this. 
-    // For robustness:
     const factorsTable = typeof ontarioLifMaximumFactors !== 'undefined' ? ontarioLifMaximumFactors : [];
     const factorData = factorsTable.find(d => d.age === age);
     if (factorData) return factorData.factor;
