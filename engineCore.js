@@ -1,10 +1,10 @@
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     9.0.0 (Feature: Dual-Track Simulation for User & Spouse Separation)
+ * @version     9.1.0 (Debug: Added console logs to trace Asset Inputs)
  * @file        engineCore.js
  * @created     2025-11-09
- * @description Core simulation loop. Separates User and Spouse assets/incomes to allow for individual tax optimization.
+ * @description Core simulation loop. Now includes debug logs to verify A/B input divergence.
  */
 
 // engineCore.js
@@ -15,13 +15,36 @@
 function runFullSimulation(inputsA, inputsB) {
     const baseYear = 2025;
 
+    // --- DEBUG LOGS START ---
+    console.group("🚀 Simulation Debug Start");
+    console.log("Time:", new Date().toISOString());
+    
+    console.log("%c Scenario A Inputs:", "color: blue; font-weight: bold;");
+    console.log("User Assets A:", inputsA.scenario.user?.assets);
+    console.log("Spouse Assets A:", inputsA.scenario.spouse?.assets);
+    
+    console.log("%c Scenario B Inputs:", "color: green; font-weight: bold;");
+    console.log("User Assets B:", inputsB.scenario.user?.assets);
+    console.log("Spouse Assets B:", inputsB.scenario.spouse?.assets);
+
+    // Deep check for equality
+    const strA = JSON.stringify(inputsA.scenario.user?.assets) + JSON.stringify(inputsA.scenario.spouse?.assets);
+    const strB = JSON.stringify(inputsB.scenario.user?.assets) + JSON.stringify(inputsB.scenario.spouse?.assets);
+    if (strA === strB) {
+        console.warn("⚠️ WARNING: Scenario A and B Asset Inputs are IDENTICAL! Check UI Data Gathering.");
+    } else {
+        console.log("✅ Scenario A and B Inputs are DIFFERENT. Proceeding...");
+    }
+    console.groupEnd();
+    // --- DEBUG LOGS END ---
+
     const globalSettingsA = {
         maxAge: inputsA.lifeExpectancy,
         cola: inputsA.cola,
         baseYear: baseYear,
         exchangeRate: inputsA.exchangeRate || 25.0
     };
-    const resultsA = simulateScenario(inputsA.scenario, globalSettingsA);
+    const resultsA = simulateScenario(inputsA.scenario, globalSettingsA, "A");
 
     const globalSettingsB = {
         maxAge: inputsB.lifeExpectancy,
@@ -29,7 +52,7 @@ function runFullSimulation(inputsA, inputsB) {
         baseYear: baseYear,
         exchangeRate: inputsB.exchangeRate || 25.0
     };
-    const resultsB = simulateScenario(inputsB.scenario, globalSettingsB);
+    const resultsB = simulateScenario(inputsB.scenario, globalSettingsB, "B");
 
     return { resultsA, resultsB };
 }
@@ -37,7 +60,7 @@ function runFullSimulation(inputsA, inputsB) {
 /**
  * Simulates a single scenario year by year with Dual-Track (User vs Spouse) logic.
  */
-function simulateScenario(scenario, settings) {
+function simulateScenario(scenario, settings, label = "") {
     const results = [];
     const hasSpouse = scenario.spouse && scenario.spouse.hasSpouse;
 
@@ -58,8 +81,15 @@ function simulateScenario(scenario, settings) {
         lif: scenario.spouse?.assets?.lif || 0 
     };
 
+    // --- DEBUG INTERNAL START ---
+    if (label) {
+        console.log(`[Sim ${label}] Initialized User Assets:`, currentUserAssets);
+        console.log(`[Sim ${label}] Initialized Spouse Assets:`, currentSpouseAssets);
+    }
+    // --- DEBUG INTERNAL END ---
+
     let currentUnrealizedGains_NonReg_User = scenario.user?.initialNonRegGains || 0;
-    let currentUnrealizedGains_NonReg_Spouse = 0; // Assuming 0 for simplicity or add input later
+    let currentUnrealizedGains_NonReg_Spouse = 0; 
 
     // Tax buckets for next year's expense
     let prevYearThaiTax_User = 0;
@@ -110,7 +140,7 @@ function simulateScenario(scenario, settings) {
 
         // --- 1. Apply Growth (Individual) ---
         const userGrowth = step1_ApplyGrowth(currentYear, currentUserAssets, scenario.returns, userBirthYear, userRetirementAge);
-        const spouseGrowth = step1_ApplyGrowth(currentYear, currentSpouseAssets, scenario.returns, userBirthYear, userRetirementAge); // Use user retirement trigger for sim start
+        const spouseGrowth = step1_ApplyGrowth(currentYear, currentSpouseAssets, scenario.returns, userBirthYear, userRetirementAge);
 
         yearData.user.growth = userGrowth;
         yearData.spouse.growth = spouseGrowth;
@@ -119,7 +149,6 @@ function simulateScenario(scenario, settings) {
         ['rrsp', 'tfsa', 'nonreg', 'lif'].forEach(k => yearData.growth[k] = userGrowth[k] + spouseGrowth[k]);
 
         // --- 2. Calculate Income (Individual) ---
-        // Pass 'owner' flag to differentiate items
         step2_CalculateIncome(yearData.user, scenario.user, settings, 'user', yearData.year, scenario); 
         if (hasSpouse) {
             step2_CalculateIncome(yearData.spouse, scenario.user, settings, 'spouse', yearData.year, scenario);
@@ -131,7 +160,6 @@ function simulateScenario(scenario, settings) {
         yearData.expenses += yearData.expenses_thai_tax; // Add previous year's tax bill
 
         // --- 4. Perform Withdrawals (Optimized Water-filling) ---
-        // We pass BOTH asset pools to the withdrawal engine
         const wdInfo = step4_PerformWithdrawals(yearData, currentUserAssets, currentSpouseAssets, hasSpouse);
         
         // Aggregate Withdrawals for UI
@@ -141,11 +169,9 @@ function simulateScenario(scenario, settings) {
         yearData.withdrawals.total = yearData.withdrawals.rrsp + yearData.withdrawals.tfsa + yearData.withdrawals.nonreg + yearData.withdrawals.lif;
 
         // --- 5. Calculate Taxes (Individual) ---
-        // Calculate User Tax
         const userTaxInfo = step5_CalculateTaxes(yearData.user, scenario, settings, 'user');
         yearData.user.tax = userTaxInfo;
         
-        // Calculate Spouse Tax
         let spouseTaxInfo = { totalTax: 0, tax_can: 0, tax_thai: 0, oasClawback: 0 };
         if (hasSpouse) {
             spouseTaxInfo = step5_CalculateTaxes(yearData.spouse, scenario, settings, 'spouse');
@@ -158,9 +184,8 @@ function simulateScenario(scenario, settings) {
         yearData.taxPayable_thai = userTaxInfo.tax_thai + spouseTaxInfo.tax_thai;
         yearData.oasClawback = userTaxInfo.oasClawback + spouseTaxInfo.oasClawback;
 
-        // --- 6. Reinvest Surplus (Split 50/50 or to Owner?) ---
-        // Strategy: Household surplus goes 50/50 into Non-Reg for tax splitting efficiency later
-        const totalCashOut = yearData.expenses + yearData.taxPayable_can; // Thai tax is paid next year (included in expenses)
+        // --- 6. Reinvest Surplus (Split 50/50) ---
+        const totalCashOut = yearData.expenses + yearData.taxPayable_can; // Thai tax is next year
         const totalCashIn = yearData.income.total + yearData.withdrawals.total;
         const netCashflow = totalCashIn - totalCashOut;
 
@@ -184,12 +209,11 @@ function simulateScenario(scenario, settings) {
 
         results.push(yearData);
 
-        // Update Tax for next year's expense
+        // Update Tax for next year
         prevYearThaiTax_User = yearData.user.tax.thai;
         prevYearThaiTax_Spouse = yearData.spouse.tax.thai;
 
         if (wdInfo.depleted) {
-            // Depletion logic handled in withdrawal engine, generally sets assets to 0
             break; 
         }
     }
@@ -199,10 +223,6 @@ function simulateScenario(scenario, settings) {
 /** Step 1: Apply Growth (Individual) */
 function step1_ApplyGrowth(currentYear, assets, returns, birthYear, retirementAge) {
     const retStartYear = birthYear + retirementAge;
-    // In year 1 (retirement start), assume assets are start-of-year, so apply growth? 
-    // Or if inputs are "At Retirement", maybe skip Y1 growth or apply mid-year?
-    // Standard convention: Inputs are Day 1. Apply growth for the year.
-    
     const safeReturns = returns || { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0 };
     const growth = {
         rrsp: (assets.rrsp || 0) * safeReturns.rrsp,
@@ -231,15 +251,12 @@ function step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouse
     const allItems = scenario.user?.otherIncomes || [];
 
     allItems.forEach(item => {
-        // Check type first
         if (item.type !== 'expense_thai' && item.type !== 'expense_overseas') return;
 
         let isActive = false;
-        // Check age range based on owner
         if (item.owner === 'spouse' && hasSpouse) {
             if (currentSpouseAge >= item.startAge && currentSpouseAge <= item.endAge) isActive = true;
         } else {
-            // Default to User age for 'user' or 'joint'
             if (currentUserAge >= item.startAge && currentUserAge <= item.endAge) isActive = true;
         }
 
