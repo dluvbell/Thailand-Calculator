@@ -1,7 +1,7 @@
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     9.5.3 (Fix: Clean Code - Removed metadata wrapper & Robust Expense Logic)
+ * @version     9.6.0 (Fix: Pass Settings to Withdrawal Engine & Robust Expense Logic)
  * @file        engineCore.js
  * @description Core simulation loop. Fixes syntax errors and ensures expenses persist across years.
  */
@@ -118,7 +118,8 @@ function simulateScenario(scenario, settings, label = "") {
         yearData.expenses += yearData.expenses_thai_tax; 
 
         // --- 4. Perform Withdrawals (Water-filling) ---
-        const wdInfo = step4_PerformWithdrawals(yearData, currentUserAssets, currentSpouseAssets, hasSpouse);
+        // [FIX] Pass 'settings' to access Exchange Rate
+        const wdInfo = step4_PerformWithdrawals(yearData, currentUserAssets, currentSpouseAssets, hasSpouse, settings);
         
         ['rrsp', 'tfsa', 'nonreg', 'lif'].forEach(k => {
             yearData.withdrawals[k] = (yearData.user.withdrawals[k] || 0) + (yearData.spouse.withdrawals[k] || 0);
