@@ -1,10 +1,10 @@
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     8.1.0 (Feature: Added Spouse Income Plan data handling)
+ * @version     9.9.2 (Fix: Allow 0% COLA input by fixing falsy value logic)
  * @file        uiDataHandler.js
  * @created     2025-11-09
- * @description Manages data sync, input gathering. Now handles Spouse Income Parameters.
+ * @description Manages data sync, input gathering. Fixes bug where 0% COLA was overridden by default.
  */
 
 // uiDataHandler.js
@@ -52,7 +52,7 @@ function initializeScenarioData(scenarioSuffix) {
     // 3. Setup Couple Toggle Listener
     const coupleCheckbox = elements[`isCouple_${s}`];
     const spouseAssetContainer = document.getElementById(`spouse-assets-container-${s}`);
-    const spouseIncomeContainer = document.getElementById(`spouse-income-plan-container-${s}`); // [NEW]
+    const spouseIncomeContainer = document.getElementById(`spouse-income-plan-container-${s}`); 
 
     if (coupleCheckbox) {
         const toggleSpouseUI = () => {
@@ -81,10 +81,10 @@ function initializeScenarioData(scenarioSuffix) {
             'asset_rrsp', 'asset_tfsa', 'asset_nonreg', 'asset_lif',
             // Spouse Assets
             'asset_rrsp_spouse', 'asset_tfsa_spouse', 'asset_nonreg_spouse', 'asset_lif_spouse',
-            // [NEW] Spouse Income Plan
+            // Spouse Income Plan
             'spouseBirthYear', 'spouseCppStartAge_a', 'spouseCppAt65', 'spouseOasStartAge_a', 'spouseYearsInCanada',
             // Settings
-            'income-type', 'income-owner', // [NEW] Owner sync handled via modal save logic mostly, but good to track
+            'income-type', 'income-owner', 
             'return_rrsp', 'return_tfsa', 'return_nonreg', 'return_lif',
             'isCouple_a'
         ];
@@ -191,16 +191,18 @@ function gatherInputs(scenarioSuffix) {
 
     saveCurrentPersonData(s);
 
-    // [MODIFIED] Gather all incomes (filtering happens in engine based on Owner)
-    // Previously filtered for 'user' only, now we pass everything and let engine sort.
     let allItems = incomesAndExpenses; 
     
     const withdrawalStrategy = [];
 
+    // [FIX] Correctly handle COLA=0 input
+    const colaInput = parseFloat(elements[`cola${suffix}`]?.value);
+    const safeCola = isNaN(colaInput) ? 0.025 : (colaInput / 100);
+
     const commonInputs = {
         exchangeRate: parseFloat(elements[`exchangeRate${suffix}`]?.value) || 25.0,
         lifeExpectancy: parseInt(elements[`lifeExpectancy${suffix}`]?.value) || 95,
-        cola: (parseFloat(elements[`cola${suffix}`]?.value) / 100) || 0.025,
+        cola: safeCola,
         returns: {
             rrsp: (parseFloat(elements[`return_rrsp${suffix}`]?.value) || 0) / 100,
             tfsa: (parseFloat(elements[`return_tfsa${suffix}`]?.value) || 0) / 100,
@@ -219,7 +221,7 @@ function gatherInputs(scenarioSuffix) {
         birthYear: userData.birthYear, cppStartAge: userData.cppStartAge, cppAt65: userData.cppAt65, oasStartAge: userData.oasStartAge, userYearsInCanada: userData.userYearsInCanada,
         assets: { ...userData.assets },
         initialNonRegGains: 0,
-        otherIncomes: allItems, // Pass all items, engine will filter by owner
+        otherIncomes: allItems, 
     };
 
     // Construct Spouse Data Object
@@ -322,7 +324,7 @@ function handleSaveScenarioClick() {
         strategy_b: { retirementAge: elements.retirementAge_b?.value, returns: { rrsp: elements.return_rrsp_b?.value, tfsa: elements.return_tfsa_b?.value, nonreg: elements.return_nonreg_b?.value, lif: elements.return_lif_b?.value } }
     };
     const blob = new Blob([JSON.stringify(dataToSave, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'thai_nr_scenario.json'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'thai_retirement_scenario.json'; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
 function handleFileSelected(event) {
