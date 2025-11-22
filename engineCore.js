@@ -5,9 +5,9 @@ fullContent:
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     9.5.1 (Fix: Syntax Error - Removed trailing brace)
+ * @version     9.5.2 (Fix: Syntax Error & Robust Expense Logic)
  * @file        engineCore.js
- * @description Core simulation loop. Fixes type coercion for expenses and ensures correct syntax.
+ * @description Core simulation loop. Fixes trailing brace syntax error and ensures expenses persist across years.
  */
 
 // engineCore.js
@@ -60,7 +60,8 @@ function simulateScenario(scenario, settings, label = "") {
     const userRetirementAge = Number(scenario.retirementAge) || 60;
     const maxAge = Number(settings.maxAge) || 95;
     const userBirthYear = Number(scenario.user?.birthYear) || 1980;
-    const spouseBirthYear = hasSpouse ? (Number(scenario.spouse.birthYear) || userBirthYear) : userBirthYear;
+    // Safely get spouse birth year
+    const spouseBirthYear = hasSpouse ? (Number(scenario.spouse?.birthYear) || userBirthYear) : userBirthYear;
 
     const startYear = userBirthYear + userRetirementAge;
     const endYear = userBirthYear + maxAge;
@@ -190,50 +191,57 @@ function step1_ApplyGrowth(currentYear, assets, returns) {
 
 // [FIXED] Robust Expense Calculation with Type Safety
 function step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouseBirthYear) {
-    const currentUserAge = Number(yearData.userAge);
-    const currentSpouseAge = hasSpouse ? (Number(yearData.year) - Number(spouseBirthYear)) : -1;
-    
-    const baseYear = Number(settings.baseYear) || 2025;
     const currentYear = Number(yearData.year);
+    const baseYear = Number(settings.baseYear) || 2025;
+    
+    const currentUserAge = Number(yearData.userAge);
+    // Calculate spouse age properly
+    const currentSpouseAge = hasSpouse ? (currentYear - Number(spouseBirthYear)) : -100;
+
+    const allItems = scenario.user?.otherIncomes || [];
     
     let thaiExpenses = 0;
     let overseasExpenses = 0;
 
-    const allItems = scenario.user?.otherIncomes || [];
+    for (const item of allItems) {
+         // Only process expenses
+         if (item.type !== 'expense_thai' && item.type !== 'expense_overseas') continue;
 
-    allItems.forEach(item => {
-        // Only process expenses
-        if (item.type !== 'expense_thai' && item.type !== 'expense_overseas') return;
+         // Force safe numbers. If endAge is missing or 0, default to 110 to ensure it persists.
+         const startAge = Number(item.startAge) || 0;
+         const endAgeRaw = Number(item.endAge);
+         const endAge = (endAgeRaw > 0) ? endAgeRaw : 110;
+         
+         const amount = Number(item.amount) || 0;
+         const cola = Number(item.cola) || 0;
 
-        // FORCE NUMBER CONVERSION & DEFAULTS to prevent NaN causing 'isActive' to be false
-        const startAge = isNaN(Number(item.startAge)) ? 0 : Number(item.startAge);
-        const endAge = isNaN(Number(item.endAge)) || Number(item.endAge) === 0 ? 100 : Number(item.endAge);
-        const amountPV = isNaN(Number(item.amount)) ? 0 : Number(item.amount);
-        const itemColaRate = isNaN(Number(item.cola)) ? 0 : Number(item.cola);
+         let isActive = false;
+         
+         // Check Ownership & Age Range
+         if (item.owner === 'spouse' && hasSpouse) {
+             if (currentSpouseAge >= startAge && currentSpouseAge <= endAge) isActive = true;
+         } else {
+             // Default to user for 'user', 'joint', or undefined owner
+             // Note: If 'spouse' owner but hasSpouse=false, it falls here (User pays).
+             // This prevents expenses from disappearing if spouse mode is toggled off.
+             if (currentUserAge >= startAge && currentUserAge <= endAge) isActive = true;
+         }
 
-        let isActive = false;
-
-        // Determine who owns this expense bucket?
-        if (item.owner === 'spouse' && hasSpouse) {
-            if (currentSpouseAge >= startAge && currentSpouseAge <= endAge) isActive = true;
-        } else {
-            // Default to user for 'user', 'joint', or undefined owner
-            if (currentUserAge >= startAge && currentUserAge <= endAge) isActive = true;
-        }
-
-        if (isActive) {
-            const yearsSinceBase = Math.max(0, currentYear - baseYear);
-            const currentYearAmount = amountPV * Math.pow(1 + itemColaRate, yearsSinceBase);
-
-            if (item.type === 'expense_thai') {
-                thaiExpenses += currentYearAmount;
-            } else {
-                overseasExpenses += currentYearAmount;
-            }
-        }
-    });
+         if (isActive) {
+             const yearsSinceBase = Math.max(0, currentYear - baseYear);
+             const inflatedAmount = amount * Math.pow(1 + cola, yearsSinceBase);
+             
+             if (item.type === 'expense_thai') {
+                 thaiExpenses += inflatedAmount;
+             } else {
+                 overseasExpenses += inflatedAmount;
+             }
+         }
+    }
 
     yearData.expenses_thai = thaiExpenses;
     yearData.expenses_overseas = overseasExpenses;
+    // Initialize total expenses with living expenses (Tax added later in main loop)
     yearData.expenses = thaiExpenses + overseasExpenses;
+}
 }
