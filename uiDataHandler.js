@@ -1,10 +1,10 @@
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     7.3.0 (Feature: Added Spouse Asset handling & Couple Toggle logic)
+ * @version     8.1.0 (Feature: Added Spouse Income Plan data handling)
  * @file        uiDataHandler.js
  * @created     2025-11-09
- * @description Manages data sync, input gathering, and UI toggles for couple mode.
+ * @description Manages data sync, input gathering. Now handles Spouse Income Parameters.
  */
 
 // uiDataHandler.js
@@ -19,7 +19,7 @@ function initializeScenarioData(scenarioSuffix) {
     const suffix = (s === 'a') ? '' : '_b';
     const dataStore = (s === 'a') ? scenarioAData : scenarioBData;
 
-    // 1. Initialize Data Store with defaults
+    // 1. Initialize User Data
     dataStore.user = {
         birthYear: parseInt(elements[`userBirthYear${suffix}`]?.value) || 1980,
         cppStartAge: parseInt(elements[`cppStartAge_${s}`]?.value) || 60,
@@ -34,8 +34,13 @@ function initializeScenarioData(scenarioSuffix) {
         },
     };
     
-    // [NEW] Initialize Spouse Data
+    // 2. Initialize Spouse Data (Assets + Income Plan)
     dataStore.spouse = {
+        birthYear: parseInt(elements[`spouseBirthYear${suffix}`]?.value) || 1980,
+        cppStartAge: parseInt(elements[`spouseCppStartAge_${s}`]?.value) || 60,
+        cppAt65: parseFloat(elements[`spouseCppAt65${suffix}`]?.value) || 0,
+        oasStartAge: parseInt(elements[`spouseOasStartAge_${s}`]?.value) || 65,
+        yearsInCanada: parseInt(elements[`spouseYearsInCanada${suffix}`]?.value) || 20,
         assets: {
             rrsp: parseFloat(elements[`asset_rrsp_spouse${suffix}`]?.value) || 0,
             tfsa: parseFloat(elements[`asset_tfsa_spouse${suffix}`]?.value) || 0,
@@ -44,23 +49,27 @@ function initializeScenarioData(scenarioSuffix) {
         }
     };
 
-    // 2. Setup Couple Toggle Listener
+    // 3. Setup Couple Toggle Listener
     const coupleCheckbox = elements[`isCouple_${s}`];
-    const spouseContainer = document.getElementById(`spouse-assets-container-${s}`);
-    if (coupleCheckbox && spouseContainer) {
+    const spouseAssetContainer = document.getElementById(`spouse-assets-container-${s}`);
+    const spouseIncomeContainer = document.getElementById(`spouse-income-plan-container-${s}`); // [NEW]
+
+    if (coupleCheckbox) {
+        const toggleSpouseUI = () => {
+            const isChecked = coupleCheckbox.checked;
+            if (spouseAssetContainer) isChecked ? spouseAssetContainer.classList.remove('hidden') : spouseAssetContainer.classList.add('hidden');
+            if (spouseIncomeContainer) isChecked ? spouseIncomeContainer.classList.remove('hidden') : spouseIncomeContainer.classList.add('hidden');
+        };
+
         coupleCheckbox.addEventListener('change', () => {
-            if (coupleCheckbox.checked) {
-                spouseContainer.classList.remove('hidden');
-            } else {
-                spouseContainer.classList.add('hidden');
-            }
+            toggleSpouseUI();
             if (s === 'a') syncInputAtoB(`isCouple_${s}`);
         });
         // Initial State Check
-        if (coupleCheckbox.checked) spouseContainer.classList.remove('hidden');
+        toggleSpouseUI();
     }
 
-    // 3. Setup Input Sync Listeners (Scenario A only)
+    // 4. Setup Input Sync Listeners (Scenario A only)
     if (s === 'a') {
         const scenarioAInputs = [
             'exchangeRate',
@@ -70,12 +79,14 @@ function initializeScenarioData(scenarioSuffix) {
             'userYearsInCanada',
             // User Assets
             'asset_rrsp', 'asset_tfsa', 'asset_nonreg', 'asset_lif',
-            // [NEW] Spouse Assets
+            // Spouse Assets
             'asset_rrsp_spouse', 'asset_tfsa_spouse', 'asset_nonreg_spouse', 'asset_lif_spouse',
+            // [NEW] Spouse Income Plan
+            'spouseBirthYear', 'spouseCppStartAge_a', 'spouseCppAt65', 'spouseOasStartAge_a', 'spouseYearsInCanada',
             // Settings
-            'income-type',
+            'income-type', 'income-owner', // [NEW] Owner sync handled via modal save logic mostly, but good to track
             'return_rrsp', 'return_tfsa', 'return_nonreg', 'return_lif',
-            'isCouple_a' // [NEW]
+            'isCouple_a'
         ];
 
         scenarioAInputs.forEach(idA => {
@@ -109,8 +120,13 @@ function saveCurrentPersonData(scenarioSuffix) {
         }
     };
 
-    // [NEW] Save Spouse
+    // Save Spouse
     dataStore.spouse = {
+        birthYear: parseInt(elements[`spouseBirthYear${suffix}`]?.value) || 0,
+        cppStartAge: parseInt(elements[`spouseCppStartAge_${s}`]?.value) || 0,
+        cppAt65: parseFloat(elements[`spouseCppAt65${suffix}`]?.value) || 0,
+        oasStartAge: parseInt(elements[`spouseOasStartAge_${s}`]?.value) || 0,
+        yearsInCanada: parseInt(elements[`spouseYearsInCanada${suffix}`]?.value) || 0,
         assets: {
             rrsp: parseFloat(elements[`asset_rrsp_spouse${suffix}`]?.value) || 0,
             tfsa: parseFloat(elements[`asset_tfsa_spouse${suffix}`]?.value) || 0,
@@ -125,7 +141,7 @@ function loadPersonData(scenarioSuffix) {
     const suffix = (s === 'a') ? '' : '_b';
     const dataStore = (s === 'a') ? scenarioAData : scenarioBData;
     const personData = dataStore.user;
-    const spouseData = dataStore.spouse; // [NEW]
+    const spouseData = dataStore.spouse;
 
     if (!personData) return;
 
@@ -140,20 +156,27 @@ function loadPersonData(scenarioSuffix) {
     if(elements[`asset_nonreg${suffix}`]) elements[`asset_nonreg${suffix}`].value = personData.assets?.nonreg || '';
     if(elements[`asset_lif${suffix}`]) elements[`asset_lif${suffix}`].value = personData.assets?.lif || '';
 
-    // [NEW] Load Spouse Assets
-    if (spouseData && spouseData.assets) {
-        if(elements[`asset_rrsp_spouse${suffix}`]) elements[`asset_rrsp_spouse${suffix}`].value = spouseData.assets.rrsp || '';
-        if(elements[`asset_tfsa_spouse${suffix}`]) elements[`asset_tfsa_spouse${suffix}`].value = spouseData.assets.tfsa || '';
-        if(elements[`asset_nonreg_spouse${suffix}`]) elements[`asset_nonreg_spouse${suffix}`].value = spouseData.assets.nonreg || '';
-        if(elements[`asset_lif_spouse${suffix}`]) elements[`asset_lif_spouse${suffix}`].value = spouseData.assets.lif || '';
+    // Load Spouse
+    if (spouseData) {
+        if(elements[`spouseBirthYear${suffix}`]) elements[`spouseBirthYear${suffix}`].value = spouseData.birthYear || '';
+        if(elements[`spouseCppStartAge_${s}`]) elements[`spouseCppStartAge_${s}`].value = spouseData.cppStartAge || '';
+        if(elements[`spouseCppAt65${suffix}`]) elements[`spouseCppAt65${suffix}`].value = spouseData.cppAt65 || '';
+        if(elements[`spouseOasStartAge_${s}`]) elements[`spouseOasStartAge_${s}`].value = spouseData.oasStartAge || '';
+        if(elements[`spouseYearsInCanada${suffix}`]) elements[`spouseYearsInCanada${suffix}`].value = spouseData.yearsInCanada || '';
+
+        if (spouseData.assets) {
+            if(elements[`asset_rrsp_spouse${suffix}`]) elements[`asset_rrsp_spouse${suffix}`].value = spouseData.assets.rrsp || '';
+            if(elements[`asset_tfsa_spouse${suffix}`]) elements[`asset_tfsa_spouse${suffix}`].value = spouseData.assets.tfsa || '';
+            if(elements[`asset_nonreg_spouse${suffix}`]) elements[`asset_nonreg_spouse${suffix}`].value = spouseData.assets.nonreg || '';
+            if(elements[`asset_lif_spouse${suffix}`]) elements[`asset_lif_spouse${suffix}`].value = spouseData.assets.lif || '';
+        }
     }
 
-    // [NEW] Trigger UI update for Spouse Container visibility
+    // Update UI visibility
     const coupleCheckbox = elements[`isCouple_${s}`];
-    const spouseContainer = document.getElementById(`spouse-assets-container-${s}`);
-    if (coupleCheckbox && spouseContainer) {
-        if (coupleCheckbox.checked) spouseContainer.classList.remove('hidden');
-        else spouseContainer.classList.add('hidden');
+    if (coupleCheckbox) {
+        // Manually trigger change to update visibility based on loaded checked state
+        coupleCheckbox.dispatchEvent(new Event('change'));
     }
 
     if (typeof renderIncomeList === 'function') renderIncomeList(s);
@@ -168,7 +191,10 @@ function gatherInputs(scenarioSuffix) {
 
     saveCurrentPersonData(s);
 
-    let userItems = incomesAndExpenses.filter(inc => inc.owner === 'user');
+    // [MODIFIED] Gather all incomes (filtering happens in engine based on Owner)
+    // Previously filtered for 'user' only, now we pass everything and let engine sort.
+    let allItems = incomesAndExpenses; 
+    
     const withdrawalStrategy = [];
 
     const commonInputs = {
@@ -186,13 +212,25 @@ function gatherInputs(scenarioSuffix) {
     };
 
     const userData = dataStore.user || {};
-    const spouseData = dataStore.spouse || {}; // [NEW]
+    const spouseData = dataStore.spouse || {};
 
+    // Construct User Data Object
     const userScenarioData = {
         birthYear: userData.birthYear, cppStartAge: userData.cppStartAge, cppAt65: userData.cppAt65, oasStartAge: userData.oasStartAge, userYearsInCanada: userData.userYearsInCanada,
         assets: { ...userData.assets },
         initialNonRegGains: 0,
-        otherIncomes: userItems,
+        otherIncomes: allItems, // Pass all items, engine will filter by owner
+    };
+
+    // Construct Spouse Data Object
+    const spouseScenarioData = {
+        hasSpouse: commonInputs.isCouple,
+        birthYear: spouseData.birthYear, 
+        cppStartAge: spouseData.cppStartAge, 
+        cppAt65: spouseData.cppAt65, 
+        oasStartAge: spouseData.oasStartAge, 
+        yearsInCanada: spouseData.yearsInCanada,
+        assets: { ...spouseData.assets }
     };
 
     return {
@@ -204,11 +242,7 @@ function gatherInputs(scenarioSuffix) {
             retirementAge: commonInputs.retirementAge,
             returns: commonInputs.returns,
             user: userScenarioData,
-            // [MODIFIED] Pass spouse asset data if couple
-            spouse: { 
-                hasSpouse: commonInputs.isCouple, 
-                assets: { ...spouseData.assets } 
-            },
+            spouse: spouseScenarioData,
             withdrawalStrategy: withdrawalStrategy
         }
     };
@@ -219,13 +253,12 @@ function syncInputAtoB(elementIdA) {
     const elementA = elements[elementIdA.replace(/-/g, '_')];
     if (!elementA) return;
 
-    // Checkbox handling vs Value handling
     const isCheckbox = elementA.type === 'checkbox';
     const newValue = isCheckbox ? elementA.checked : elementA.value;
     
     let elementIdB = elementIdA.endsWith('_a') ? elementIdA.slice(0, -2) + '_b' : elementIdA + '_b';
 
-    if (['exchangeRate', 'lifeExpectancy', 'cola', 'userBirthYear', 'userCppAt65', 'income-type', 'userYearsInCanada'].includes(elementIdA) || elementIdA.startsWith('asset_') || elementIdA.startsWith('return_')) {
+    if (['exchangeRate', 'lifeExpectancy', 'cola', 'userBirthYear', 'userCppAt65', 'income-type', 'userYearsInCanada', 'spouseBirthYear', 'spouseCppAt65', 'spouseYearsInCanada'].includes(elementIdA) || elementIdA.startsWith('asset_') || elementIdA.startsWith('return_')) {
         elementIdB = elementIdA + '_b';
     }
 
@@ -235,7 +268,6 @@ function syncInputAtoB(elementIdA) {
         if (isCheckbox) {
             if (elementB.checked !== newValue) {
                 elementB.checked = newValue;
-                // Trigger change event manually for UI update (hiding/showing container)
                 elementB.dispatchEvent(new Event('change')); 
             }
         } else {
@@ -247,20 +279,24 @@ function syncInputAtoB(elementIdA) {
         if (!['exchangeRate', 'lifeExpectancy', 'cola', 'retirementAge_a'].includes(elementIdA) && !elementIdA.startsWith('return_')) {
              let valueToSet = (elementA.type === 'number') ? parseFloat(newValue) || 0 : newValue;
              
-             // Handle User Assets
+             // User Assets
              if (fieldKey.startsWith('asset_') && !fieldKey.includes('_spouse')) {
                  if (!scenarioBData.user.assets) scenarioBData.user.assets = {};
                  scenarioBData.user.assets[fieldKey.replace('asset_', '')] = valueToSet;
              } 
-             // [NEW] Handle Spouse Assets
+             // Spouse Assets
              else if (fieldKey.startsWith('asset_') && fieldKey.includes('_spouse')) {
-                 if (!scenarioBData.spouse) scenarioBData.spouse = {};
                  if (!scenarioBData.spouse.assets) scenarioBData.spouse.assets = {};
-                 // e.g. asset_rrsp_spouse -> rrsp
-                 const assetType = fieldKey.replace('asset_', '').replace('_spouse', '');
-                 scenarioBData.spouse.assets[assetType] = valueToSet;
+                 scenarioBData.spouse.assets[fieldKey.replace('asset_', '').replace('_spouse', '')] = valueToSet;
              }
-             // Handle User Info
+             // Spouse Income Plan Parameters
+             else if (fieldKey === 'spouseBirthYear') scenarioBData.spouse.birthYear = parseInt(newValue) || 0;
+             else if (fieldKey === 'spouseCppStartAge') scenarioBData.spouse.cppStartAge = parseInt(newValue) || 0;
+             else if (fieldKey === 'spouseCppAt65') scenarioBData.spouse.cppAt65 = valueToSet;
+             else if (fieldKey === 'spouseOasStartAge') scenarioBData.spouse.oasStartAge = parseInt(newValue) || 0;
+             else if (fieldKey === 'spouseYearsInCanada') scenarioBData.spouse.yearsInCanada = parseInt(newValue) || 0;
+             
+             // User Income Plan Parameters
              else if (fieldKey === 'userBirthYear') scenarioBData.user.birthYear = parseInt(newValue) || 0;
              else if (fieldKey === 'cppStartAge') scenarioBData.user.cppStartAge = parseInt(newValue) || 0;
              else if (fieldKey === 'userCppAt65') scenarioBData.user.cppAt65 = valueToSet;
@@ -306,24 +342,8 @@ function populateUIFromLoadedData(data) {
     if(elements.lifeExpectancy) elements.lifeExpectancy.value = data.lifeExpectancy || 95;
     if(elements.cola) elements.cola.value = data.cola || 2.5;
     
-    if(elements.isCouple_a) {
-        elements.isCouple_a.checked = data.isCouple_a || false;
-        // Trigger visual update
-        const containerA = document.getElementById('spouse-assets-container-a');
-        if(containerA) {
-            if(data.isCouple_a) containerA.classList.remove('hidden');
-            else containerA.classList.add('hidden');
-        }
-    }
-    if(elements.isCouple_b) {
-        elements.isCouple_b.checked = data.isCouple_b || false;
-        // Trigger visual update
-        const containerB = document.getElementById('spouse-assets-container-b');
-        if(containerB) {
-            if(data.isCouple_b) containerB.classList.remove('hidden');
-            else containerB.classList.add('hidden');
-        }
-    }
+    if(elements.isCouple_a) { elements.isCouple_a.checked = data.isCouple_a || false; }
+    if(elements.isCouple_b) { elements.isCouple_b.checked = data.isCouple_b || false; }
 
     if(elements.retirementAge_a) elements.retirementAge_a.value = data.strategy_a?.retirementAge || 60;
     if(elements.return_rrsp) elements.return_rrsp.value = data.strategy_a?.returns?.rrsp || 6;
