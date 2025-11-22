@@ -1,85 +1,71 @@
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     9.2.0 (Debug: Added verbose logging for Expense Calculation Step 3)
+ * @version     9.3.0 (Fix: Robust Type Casting & Expense Recording)
  * @file        engineCore.js
- * @created     2025-11-09
- * @description Core simulation loop. Includes debug logs to trace disappearing expenses.
+ * @description Core simulation loop. Includes strict type casting to prevent calculation errors.
  */
 
 // engineCore.js
 
-/**
- * Main execution function
- */
 function runFullSimulation(inputsA, inputsB) {
     const baseYear = 2025;
 
-    console.log("--- Simulation Start ---");
-
     const globalSettingsA = {
-        maxAge: inputsA.lifeExpectancy,
-        cola: inputsA.cola,
+        maxAge: Number(inputsA.lifeExpectancy) || 95,
+        cola: Number(inputsA.cola) || 0.025,
         baseYear: baseYear,
-        exchangeRate: inputsA.exchangeRate || 25.0
+        exchangeRate: Number(inputsA.exchangeRate) || 25.0
     };
     const resultsA = simulateScenario(inputsA.scenario, globalSettingsA, "A");
 
     const globalSettingsB = {
-        maxAge: inputsB.lifeExpectancy,
-        cola: inputsB.cola,
+        maxAge: Number(inputsB.lifeExpectancy) || 95,
+        cola: Number(inputsB.cola) || 0.025,
         baseYear: baseYear,
-        exchangeRate: inputsB.exchangeRate || 25.0
+        exchangeRate: Number(inputsB.exchangeRate) || 25.0
     };
     const resultsB = simulateScenario(inputsB.scenario, globalSettingsB, "B");
 
     return { resultsA, resultsB };
 }
 
-/**
- * Simulates a single scenario year by year with Dual-Track (User vs Spouse) logic.
- */
 function simulateScenario(scenario, settings, label = "") {
     const results = [];
     const hasSpouse = scenario.spouse && scenario.spouse.hasSpouse;
 
-    // 1. Initialize Assets Separately
+    // 1. Initialize Assets (Strict Type Casting)
     let currentUserAssets = { 
-        rrsp: scenario.user?.assets?.rrsp || 0, 
-        tfsa: scenario.user?.assets?.tfsa || 0, 
-        nonreg: scenario.user?.assets?.nonreg || 0, 
-        lif: scenario.user?.assets?.lif || 0 
+        rrsp: Number(scenario.user?.assets?.rrsp) || 0, 
+        tfsa: Number(scenario.user?.assets?.tfsa) || 0, 
+        nonreg: Number(scenario.user?.assets?.nonreg) || 0, 
+        lif: Number(scenario.user?.assets?.lif) || 0 
     };
     
     let currentSpouseAssets = { 
-        rrsp: scenario.spouse?.assets?.rrsp || 0, 
-        tfsa: scenario.spouse?.assets?.tfsa || 0, 
-        nonreg: scenario.spouse?.assets?.nonreg || 0, 
-        lif: scenario.spouse?.assets?.lif || 0 
+        rrsp: Number(scenario.spouse?.assets?.rrsp) || 0, 
+        tfsa: Number(scenario.spouse?.assets?.tfsa) || 0, 
+        nonreg: Number(scenario.spouse?.assets?.nonreg) || 0, 
+        lif: Number(scenario.spouse?.assets?.lif) || 0 
     };
 
-    let currentUnrealizedGains_NonReg_User = scenario.user?.initialNonRegGains || 0;
-    let currentUnrealizedGains_NonReg_Spouse = 0; 
-
-    // Tax trackers for next year's expense
     let prevYearThaiTax_User = 0;
     let prevYearThaiTax_Spouse = 0;
 
-    const userRetirementAge = scenario.retirementAge || 60;
-    const maxAge = settings.maxAge || 95;
-    const userBirthYear = scenario.user?.birthYear || 1980;
-    const spouseBirthYear = hasSpouse ? (scenario.spouse.birthYear || userBirthYear) : userBirthYear;
+    const userRetirementAge = parseInt(scenario.retirementAge) || 60;
+    const maxAge = parseInt(settings.maxAge) || 95;
+    const userBirthYear = parseInt(scenario.user?.birthYear) || 1980;
+    const spouseBirthYear = hasSpouse ? (parseInt(scenario.spouse.birthYear) || userBirthYear) : userBirthYear;
 
     const startYear = userBirthYear + userRetirementAge;
     const endYear = userBirthYear + maxAge;
 
     for (let currentYear = startYear; currentYear <= endYear; currentYear++) {
         const userAge = currentYear - userBirthYear;
-        const spouseAge = currentYear - spouseBirthYear;
         
         if (userAge > maxAge) break;
 
-        // Initialize Year Data Structure
+        // Data Structure Initialization
         const yearData = {
             year: currentYear, 
             userAge: userAge,
@@ -91,7 +77,7 @@ function simulateScenario(scenario, settings, label = "") {
                 withdrawals: { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0, total: 0, thai_taxable_remittance: 0, wht_deducted: 0 }
             },
             spouse: {
-                age: spouseAge,
+                age: currentYear - spouseBirthYear,
                 openingBalance: { ...currentSpouseAssets },
                 income: { cpp: 0, oas: 0, pension: 0, other_taxable: 0, other_non_remitted: 0 },
                 tax: { total: 0, can: 0, thai: 0, clawback: 0 },
@@ -100,7 +86,7 @@ function simulateScenario(scenario, settings, label = "") {
             expenses: 0, expenses_thai: 0, expenses_overseas: 0,
             expenses_thai_tax: prevYearThaiTax_User + prevYearThaiTax_Spouse,
             
-            // Aggregate fields for UI compatibility
+            // Aggregates for UI
             growth: { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0 },
             income: { total: 0 },
             withdrawals: { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0, total: 0 },
@@ -108,38 +94,37 @@ function simulateScenario(scenario, settings, label = "") {
             closingBalance: { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0 }
         };
 
-        // --- 1. Apply Growth (Individual) ---
-        const userGrowth = step1_ApplyGrowth(currentYear, currentUserAssets, scenario.returns, userBirthYear, userRetirementAge);
-        const spouseGrowth = step1_ApplyGrowth(currentYear, currentSpouseAssets, scenario.returns, userBirthYear, userRetirementAge);
-
+        // --- 1. Apply Growth ---
+        const userGrowth = step1_ApplyGrowth(currentYear, currentUserAssets, scenario.returns);
+        const spouseGrowth = step1_ApplyGrowth(currentYear, currentSpouseAssets, scenario.returns);
+        
         yearData.user.growth = userGrowth;
         yearData.spouse.growth = spouseGrowth;
-        
-        // Aggregate Growth for UI
         ['rrsp', 'tfsa', 'nonreg', 'lif'].forEach(k => yearData.growth[k] = userGrowth[k] + spouseGrowth[k]);
 
-        // --- 2. Calculate Income (Individual) ---
-        step2_CalculateIncome(yearData.user, scenario.user, settings, 'user', yearData.year, scenario); 
+        // --- 2. Calculate Income ---
+        step2_CalculateIncome(yearData.user, scenario.user, settings, 'user', currentYear, scenario); 
         if (hasSpouse) {
-            step2_CalculateIncome(yearData.spouse, scenario.user, settings, 'spouse', yearData.year, scenario);
+            step2_CalculateIncome(yearData.spouse, scenario.user, settings, 'spouse', currentYear, scenario);
         }
         yearData.income.total = (yearData.user.income?.total || 0) + (yearData.spouse.income?.total || 0);
 
-        // --- 3. Calculate Expenses (Household) ---
-        // [DEBUG] Pass label to trace
-        step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouseBirthYear, label);
+        // --- 3. Calculate Expenses ---
+        // Passing hasSpouse and birth years to ensure correct age checking
+        step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouseBirthYear);
+        // Add tax bill from previous year to total expenses
         yearData.expenses += yearData.expenses_thai_tax; 
 
-        // --- 4. Perform Withdrawals (Optimized Water-filling) ---
+        // --- 4. Perform Withdrawals ---
         const wdInfo = step4_PerformWithdrawals(yearData, currentUserAssets, currentSpouseAssets, hasSpouse);
         
-        // Aggregate Withdrawals for UI
+        // Aggregate Withdrawals
         ['rrsp', 'tfsa', 'nonreg', 'lif'].forEach(k => {
             yearData.withdrawals[k] = (yearData.user.withdrawals[k] || 0) + (yearData.spouse.withdrawals[k] || 0);
         });
         yearData.withdrawals.total = yearData.withdrawals.rrsp + yearData.withdrawals.tfsa + yearData.withdrawals.nonreg + yearData.withdrawals.lif;
 
-        // --- 5. Calculate Taxes (Individual) ---
+        // --- 5. Calculate Taxes ---
         const userTaxInfo = step5_CalculateTaxes(yearData.user, scenario, settings, 'user');
         yearData.user.tax = userTaxInfo;
         
@@ -149,13 +134,12 @@ function simulateScenario(scenario, settings, label = "") {
             yearData.spouse.tax = spouseTaxInfo;
         }
 
-        // Aggregate Taxes for UI
         yearData.taxPayable = userTaxInfo.totalTax + spouseTaxInfo.totalTax;
         yearData.taxPayable_can = userTaxInfo.tax_can + spouseTaxInfo.tax_can;
         yearData.taxPayable_thai = userTaxInfo.tax_thai + spouseTaxInfo.tax_thai;
         yearData.oasClawback = userTaxInfo.oasClawback + spouseTaxInfo.oasClawback;
 
-        // --- 6. Reinvest Surplus (Split 50/50) ---
+        // --- 6. Reinvest Surplus ---
         const totalCashOut = yearData.expenses + yearData.taxPayable_can; 
         const totalCashIn = yearData.income.total + yearData.withdrawals.total;
         const netCashflow = totalCashIn - totalCashOut;
@@ -172,27 +156,22 @@ function simulateScenario(scenario, settings, label = "") {
         // Update Closing Balances
         yearData.user.closingBalance = { ...currentUserAssets };
         yearData.spouse.closingBalance = { ...currentSpouseAssets };
-        
         ['rrsp', 'tfsa', 'nonreg', 'lif'].forEach(k => {
             yearData.closingBalance[k] = currentUserAssets[k] + currentSpouseAssets[k];
         });
 
         results.push(yearData);
 
+        // Carry forward tax bill
         prevYearThaiTax_User = yearData.user.tax.thai;
         prevYearThaiTax_Spouse = spouseTaxInfo.tax_thai;
 
-        if (wdInfo.depleted) {
-            // Depletion logic
-            // break; // Don't break, let it run to see 0s
-        }
+        if (wdInfo.depleted) break; 
     }
     return results;
 }
 
-/** Step 1: Apply Growth (Individual) */
-function step1_ApplyGrowth(currentYear, assets, returns, birthYear, retirementAge) {
-    const retStartYear = birthYear + retirementAge;
+function step1_ApplyGrowth(currentYear, assets, returns) {
     const safeReturns = returns || { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0 };
     const growth = {
         rrsp: (assets.rrsp || 0) * safeReturns.rrsp,
@@ -200,55 +179,44 @@ function step1_ApplyGrowth(currentYear, assets, returns, birthYear, retirementAg
         nonreg: (assets.nonreg || 0) * safeReturns.nonreg,
         lif: (assets.lif || 0) * safeReturns.lif
     };
-
     assets.rrsp += growth.rrsp;
     assets.tfsa += growth.tfsa;
     assets.nonreg += growth.nonreg;
     assets.lif += growth.lif;
-
     return growth;
 }
 
-/** Step 3: Calculate Expenses (Household) - WITH DEBUGGING */
-function step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouseBirthYear, label) {
+function step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouseBirthYear) {
     const currentUserAge = yearData.userAge;
     const currentSpouseAge = hasSpouse ? (yearData.year - spouseBirthYear) : -1;
     const baseYear = settings.baseYear || 2025;
     const currentYear = yearData.year;
+    
     let thaiExpenses = 0;
     let overseasExpenses = 0;
 
     const allItems = scenario.user?.otherIncomes || [];
 
-    // [DEBUG] Only log for first few years to avoid spam
-    const debugMode = (label === "A" || label === "B") && (currentUserAge <= 55);
-
-    if (debugMode) {
-        console.group(`🔎 Step 3 Debug [${label}] Year: ${currentYear}, Age: ${currentUserAge}`);
-    }
-
     allItems.forEach(item => {
         if (item.type !== 'expense_thai' && item.type !== 'expense_overseas') return;
 
         let isActive = false;
-        // Check age range based on owner
+        const startAge = parseInt(item.startAge) || 0;
+        const endAge = parseInt(item.endAge) || 120;
+
+        // Robust Owner/Age Logic
         if (item.owner === 'spouse' && hasSpouse) {
-            if (currentSpouseAge >= item.startAge && currentSpouseAge <= item.endAge) isActive = true;
+            if (currentSpouseAge >= startAge && currentSpouseAge <= endAge) isActive = true;
         } else {
             // Default to User age for 'user' or 'joint'
-            if (currentUserAge >= item.startAge && currentUserAge <= item.endAge) isActive = true;
-        }
-
-        if (debugMode) {
-            console.log(`Item: ${item.desc} (${item.type}), Owner: ${item.owner}, Amount: ${item.amount}`);
-            console.log(`   Range: ${item.startAge}-${item.endAge}, Current Age: ${item.owner === 'spouse' ? currentSpouseAge : currentUserAge}`);
-            console.log(`   Active? ${isActive}`);
+            if (currentUserAge >= startAge && currentUserAge <= endAge) isActive = true;
         }
 
         if (isActive) {
             const yearsSinceBase = Math.max(0, currentYear - baseYear);
-            const itemColaRate = (typeof item.cola === 'number') ? item.cola : 0;
-            const currentYearAmount = (item.amount || 0) * Math.pow(1 + itemColaRate, yearsSinceBase);
+            const itemColaRate = Number(item.cola) || 0;
+            const amountPV = Number(item.amount) || 0;
+            const currentYearAmount = amountPV * Math.pow(1 + itemColaRate, yearsSinceBase);
 
             if (item.type === 'expense_thai') {
                 thaiExpenses += currentYearAmount;
@@ -258,12 +226,7 @@ function step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouse
         }
     });
 
-    if (debugMode) {
-        console.log(`=> Total Thai Exp: ${thaiExpenses}`);
-        console.log(`=> Total OS Exp: ${overseasExpenses}`);
-        console.groupEnd();
-    }
-
+    // Explicit assignment to ensure data persistence
     yearData.expenses_thai = thaiExpenses;
     yearData.expenses_overseas = overseasExpenses;
     yearData.expenses = thaiExpenses + overseasExpenses;
