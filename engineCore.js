@@ -1,9 +1,9 @@
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     9.6.0 (Fix: Pass Settings to Withdrawal Engine & Robust Expense Logic)
+ * @version     9.8.0 (Fix: Connect Settings to Withdrawal Engine & Robust Logic)
  * @file        engineCore.js
- * @description Core simulation loop. Fixes syntax errors and ensures expenses persist across years.
+ * @description Core simulation loop. Bridges Exchange Rate settings to Withdrawal Engine.
  */
 
 // engineCore.js
@@ -118,7 +118,7 @@ function simulateScenario(scenario, settings, label = "") {
         yearData.expenses += yearData.expenses_thai_tax; 
 
         // --- 4. Perform Withdrawals (Water-filling) ---
-        // [FIX] Pass 'settings' to access Exchange Rate
+        // [CRITICAL FIX] Pass 'settings' to access Exchange Rate in Withdrawal Engine
         const wdInfo = step4_PerformWithdrawals(yearData, currentUserAssets, currentSpouseAssets, hasSpouse, settings);
         
         ['rrsp', 'tfsa', 'nonreg', 'lif'].forEach(k => {
@@ -142,7 +142,7 @@ function simulateScenario(scenario, settings, label = "") {
         yearData.oasClawback = userTaxInfo.oasClawback + spouseTaxInfo.oasClawback;
 
         // --- 6. Reinvest Surplus ---
-        const totalCashOut = yearData.expenses + yearData.taxPayable_can; 
+        const totalCashOut = yearData.expenses + yearData.taxPayable_can; // Thai Tax paid next year
         const totalCashIn = yearData.income.total + yearData.withdrawals.total;
         const netCashflow = totalCashIn - totalCashOut;
 
