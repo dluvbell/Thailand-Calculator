@@ -1,9 +1,13 @@
+{
+type: uploaded file
+fileName: engineCore.js
+fullContent:
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     9.4.0 (Fix: Strict Number Casting for Expense Age Logic)
+ * @version     9.5.0 (Fix: Bulletproof Expense Age Logic to prevent disappearance after Year 1)
  * @file        engineCore.js
- * @description Core simulation loop. Ensures expenses persist past year 1 by fixing type coercion issues.
+ * @description Core simulation loop. Fixes type coercion and fallbacks for start/end ages in expenses.
  */
 
 // engineCore.js
@@ -110,10 +114,10 @@ function simulateScenario(scenario, settings, label = "") {
         }
         yearData.income.total = (yearData.user.income?.total || 0) + (yearData.spouse.income?.total || 0);
 
-        // --- 3. Calculate Expenses (FIXED) ---
+        // --- 3. Calculate Expenses (FIXED & ROBUST) ---
         step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouseBirthYear);
         
-        // Add Tax Bill from previous year
+        // Add Tax Bill from previous year to total expenses
         yearData.expenses += yearData.expenses_thai_tax; 
 
         // --- 4. Perform Withdrawals (Water-filling) ---
@@ -187,7 +191,9 @@ function step1_ApplyGrowth(currentYear, assets, returns) {
 // [FIXED] Robust Expense Calculation with Type Safety
 function step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouseBirthYear) {
     const currentUserAge = Number(yearData.userAge);
+    // Correctly calculate spouse age if exists, otherwise -1
     const currentSpouseAge = hasSpouse ? (Number(yearData.year) - Number(spouseBirthYear)) : -1;
+    
     const baseYear = Number(settings.baseYear) || 2025;
     const currentYear = Number(yearData.year);
     
@@ -197,25 +203,27 @@ function step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouse
     const allItems = scenario.user?.otherIncomes || [];
 
     allItems.forEach(item => {
+        // Only process expenses
         if (item.type !== 'expense_thai' && item.type !== 'expense_overseas') return;
 
+        // FORCE NUMBER CONVERSION & DEFAULTS to prevent NaN causing 'isActive' to be false
+        const startAge = isNaN(Number(item.startAge)) ? 0 : Number(item.startAge);
+        const endAge = isNaN(Number(item.endAge)) || Number(item.endAge) === 0 ? 100 : Number(item.endAge);
+        const amountPV = isNaN(Number(item.amount)) ? 0 : Number(item.amount);
+        const itemColaRate = isNaN(Number(item.cola)) ? 0 : Number(item.cola);
+
         let isActive = false;
-        // FORCE NUMBER CONVERSION for comparison
-        const startAge = Number(item.startAge);
-        const endAge = Number(item.endAge);
 
         // Determine who owns this expense bucket?
-        // If 'spouse', check spouse age. Else check user age.
         if (item.owner === 'spouse' && hasSpouse) {
             if (currentSpouseAge >= startAge && currentSpouseAge <= endAge) isActive = true;
         } else {
+            // Default to user for 'user', 'joint', or undefined owner
             if (currentUserAge >= startAge && currentUserAge <= endAge) isActive = true;
         }
 
         if (isActive) {
             const yearsSinceBase = Math.max(0, currentYear - baseYear);
-            const itemColaRate = Number(item.cola) || 0;
-            const amountPV = Number(item.amount) || 0;
             const currentYearAmount = amountPV * Math.pow(1 + itemColaRate, yearsSinceBase);
 
             if (item.type === 'expense_thai') {
@@ -228,5 +236,7 @@ function step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouse
 
     yearData.expenses_thai = thaiExpenses;
     yearData.expenses_overseas = overseasExpenses;
+    // Initialize total expenses with living expenses (Tax added later in main loop)
     yearData.expenses = thaiExpenses + overseasExpenses;
+}
 }
