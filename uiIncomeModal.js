@@ -1,10 +1,10 @@
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     6.1.0 (Feature: UI support for Overseas Income label)
+ * @version     8.0.0 (Feature: Added 'Owner' field handling for User/Spouse/Joint)
  * @file        uiIncomeModal.js
  * @created     2025-11-09
- * @description Handles UI logic for Income modal. Added support for new Overseas Income type label.
+ * @description Handles UI logic for Income modal. Now saves and displays ownership attribution.
  */
 
 // uiIncomeModal.js
@@ -59,17 +59,23 @@ function renderIncomeList(scenarioSuffix) {
     if (!incomeListElement) return;
 
     const incomeItemLabel = (p) => {
+        // [NEW] Display Owner Tag
+        let ownerPrefix = "[User] ";
+        if (p.owner === 'spouse') ownerPrefix = "[Spouse] ";
+        else if (p.owner === 'joint') ownerPrefix = "[Joint] ";
+
         let typePrefix = "";
-        // Updated prefixes to include new type
-        if (p.type === 'pension') typePrefix = "[Pension] ";
-        else if (p.type === 'income') typePrefix = "[Other Inc (Taxable)] ";
-        else if (p.type === 'income_overseas') typePrefix = "[Overseas Inc] "; // NEW
-        else if (p.type === 'expense_thai') typePrefix = "[Thai Exp] ";
-        else if (p.type === 'expense_overseas') typePrefix = "[O/S Exp] ";
+        if (p.type === 'pension') typePrefix = "Pension: ";
+        else if (p.type === 'income') typePrefix = "Other Inc: ";
+        else if (p.type === 'income_overseas') typePrefix = "O/S Inc: ";
+        else if (p.type === 'expense_thai') typePrefix = "Thai Exp: ";
+        else if (p.type === 'expense_overseas') typePrefix = "O/S Exp: ";
 
         const amountDisplay = formatCurrency(p.amount || 0);
         const colaDisplay = ` | COLA: ${((p.cola || 0) * 100).toFixed(1)}%`;
-        return `${typePrefix}${p.desc || 'Item'}: ${amountDisplay}/yr (Age ${p.startAge || '?'}-${p.endAge || '?'})${colaDisplay}`;
+        
+        // Combine Owner + Type + Desc
+        return `${ownerPrefix}${typePrefix}${p.desc || 'Item'}: ${amountDisplay}/yr (Age ${p.startAge || '?'}-${p.endAge || '?'})${colaDisplay}`;
     };
 
     incomeListElement.innerHTML = incomes.map(inc => {
@@ -96,13 +102,17 @@ function saveIncome(scenarioSuffix) {
         switch(type) {
             case 'pension': return 'Pension Income';
             case 'income': return 'Other Income (Taxable)';
-            case 'income_overseas': return 'Overseas Income (Untaxed)'; // New label
+            case 'income_overseas': return 'Overseas Income (Untaxed)';
             case 'expense_thai': return 'Thai Living Expense';
             case 'expense_overseas': return 'Overseas Travel Expense';
             default: return 'Item';
         }
     };
     const selectedType = elements[`income_type${suffix}`]?.value || 'pension';
+    
+    // [NEW] Get Selected Owner
+    const ownerSelect = document.getElementById(`income-owner${suffix}`);
+    const selectedOwner = ownerSelect ? ownerSelect.value : 'user';
 
     const newItem = {
         type: selectedType,
@@ -110,7 +120,7 @@ function saveIncome(scenarioSuffix) {
         amount: parseFloat(document.getElementById(`income-amount${suffix}`)?.value) || 0,
         startAge: parseInt(document.getElementById(`income-start-age${suffix}`)?.value) || (s === 'a' ? 60 : 65),
         endAge: parseInt(document.getElementById(`income-end-age${suffix}`)?.value) || 95,
-        owner: 'user',
+        owner: selectedOwner, // [MODIFIED] Save actual owner
         cola: (parseFloat(document.getElementById(`income-cola${suffix}`)?.value) / 100) || 0,
     };
 
@@ -156,6 +166,11 @@ function handleIncomeListClick(e, scenarioSuffix) {
         if (!item) return;
 
         if(elements[`income_id${suffix}`]) elements[`income_id${suffix}`].value = item.id;
+        
+        // [NEW] Set Owner Dropdown
+        const ownerSelect = document.getElementById(`income-owner${suffix}`);
+        if(ownerSelect) ownerSelect.value = item.owner || 'user';
+
         if(elements[`income_type${suffix}`]) elements[`income_type${suffix}`].value = item.type || 'pension';
         if(document.getElementById(`income-desc${suffix}`)) document.getElementById(`income-desc${suffix}`).value = item.desc;
         if(document.getElementById(`income-amount${suffix}`)) document.getElementById(`income-amount${suffix}`).value = item.amount;
@@ -172,6 +187,11 @@ function clearIncomeForm(scenarioSuffix) {
     const suffix = (s === 'a') ? '' : '_b';
 
     if(elements[`income_id${suffix}`]) elements[`income_id${suffix}`].value = '';
+    
+    // [NEW] Reset Owner Dropdown
+    const ownerSelect = document.getElementById(`income-owner${suffix}`);
+    if(ownerSelect) ownerSelect.value = 'user';
+
     if(elements[`income_type${suffix}`]) elements[`income_type${suffix}`].value = 'pension';
     if(document.getElementById(`income-desc${suffix}`)) document.getElementById(`income-desc${suffix}`).value = '';
     if(document.getElementById(`income-amount${suffix}`)) document.getElementById(`income-amount${suffix}`).value = '';
@@ -228,13 +248,13 @@ function getDefaultIncomes(scenarioSuffix) {
     if (scenarioSuffix === 'a') {
         return [
             { id: Date.now() + 1, type: 'pension', desc: 'OTPP Pension', amount: 45000, startAge: 60, endAge: maxAge, owner: 'user', cola: 0.02 },
-            { id: Date.now() + 2, type: 'expense_thai', desc: 'Thai Living Base', amount: 30000, startAge: retAgeA, endAge: maxAge, owner: 'user', cola: 0.025 },
-            { id: Date.now() + 3, type: 'expense_overseas', desc: 'Annual Travel', amount: 10000, startAge: retAgeA, endAge: 80, owner: 'user', cola: 0.03 }
+            { id: Date.now() + 2, type: 'expense_thai', desc: 'Thai Living Base', amount: 30000, startAge: retAgeA, endAge: maxAge, owner: 'joint', cola: 0.025 },
+            { id: Date.now() + 3, type: 'expense_overseas', desc: 'Annual Travel', amount: 10000, startAge: retAgeA, endAge: 80, owner: 'joint', cola: 0.03 }
         ];
     } else {
          return [
             { id: Date.now() + 4, type: 'pension', desc: 'Company Pension', amount: 25000, startAge: 65, endAge: maxAge, owner: 'user', cola: 0.01 },
-            { id: Date.now() + 5, type: 'expense_thai', desc: 'Thai Living Base', amount: 35000, startAge: retAgeB, endAge: maxAge, owner: 'user', cola: 0.03 }
+            { id: Date.now() + 5, type: 'expense_thai', desc: 'Thai Living Base', amount: 35000, startAge: retAgeB, endAge: maxAge, owner: 'joint', cola: 0.03 }
          ];
     }
 }
