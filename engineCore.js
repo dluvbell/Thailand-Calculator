@@ -1,13 +1,9 @@
-{
-type: uploaded file
-fileName: engineCore.js
-fullContent:
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     9.9.2 (Fix: Correct tax property reference tax_thai to ensure tax is paid from assets)
+ * @version     9.9.3 (Fix: Allow 0% COLA in settings and ensure Tax is paid from assets)
  * @file        engineCore.js
- * @description Core simulation loop. Fixes bug where previous year's tax was not carried over due to property name mismatch.
+ * @description Core simulation loop. Fixes falsy check for COLA to allow 0%.
  */
 
 // engineCore.js
@@ -15,9 +11,12 @@ fullContent:
 function runFullSimulation(inputsA, inputsB) {
     const baseYear = 2025;
 
+    // [FIX] Check for undefined/null specifically to allow 0
+    const getSafeCola = (val) => (val !== undefined && val !== null && !isNaN(val)) ? Number(val) : 0.025;
+
     const globalSettingsA = {
         maxAge: Number(inputsA.lifeExpectancy) || 95,
-        cola: Number(inputsA.cola) || 0.025,
+        cola: getSafeCola(inputsA.cola),
         baseYear: baseYear,
         exchangeRate: Number(inputsA.exchangeRate) || 25.0
     };
@@ -25,7 +24,7 @@ function runFullSimulation(inputsA, inputsB) {
 
     const globalSettingsB = {
         maxAge: Number(inputsB.lifeExpectancy) || 95,
-        cola: Number(inputsB.cola) || 0.025,
+        cola: getSafeCola(inputsB.cola),
         baseYear: baseYear,
         exchangeRate: Number(inputsB.exchangeRate) || 25.0
     };
@@ -245,5 +244,4 @@ function step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouse
     yearData.expenses_overseas = overseasExpenses;
     // Initialize total expenses (before tax)
     yearData.expenses = thaiExpenses + overseasExpenses;
-}
 }
