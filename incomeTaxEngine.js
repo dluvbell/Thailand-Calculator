@@ -1,10 +1,10 @@
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     9.8.1 (Fix: Embedded Tax Brackets & Resident Deduction Enforcement)
+ * @version     9.9.0 (Fix: Removed Standard Deduction, Kept Personal Allowance Only)
  * @file        incomeTaxEngine.js
  * @created     2025-11-09
- * @description Calculates income and taxes. Embedded brackets ensure Thai tax is never zero due to loading errors.
+ * @description Calculates income and taxes. Thai deduction updated to 60k THB (Personal Allowance only).
  */
 
 // incomeTaxEngine.js
@@ -170,18 +170,18 @@ function step5_CalculateTaxes(personYearData, fullScenario, settings, ownerType)
 }
 
 /** * Helper: Calculate Thai Tax based on progressive brackets (Resident)
- * Applies Standard Deduction + Personal Allowance (Total 160k THB)
+ * Applies Personal Allowance Only (60k THB) - Standard Deduction REMOVED per user request.
  */
 function _calculateThaiTax(incomeCAD, exchangeRate, colaMultiplier) {
     if (incomeCAD <= 0) return 0;
     
     const incomeTHB = incomeCAD * exchangeRate;
     
-    // [CRITICAL LOGIC] Thai Resident Deductions
-    // Standard Deduction: 100,000 THB (Max 50% but usually capped at 100k)
-    // Personal Allowance: 60,000 THB
-    // Total Exempt: 160,000 THB
-    const totalDeductionTHB = 160000; 
+    // [MODIFIED] Deduction Logic
+    // Standard Deduction (100k) REMOVED.
+    // Personal Allowance: 60,000 THB.
+    // Total Exempt: 60,000 THB.
+    const totalDeductionTHB = 60000; 
     
     const netTaxableTHB = Math.max(0, incomeTHB - totalDeductionTHB);
 
@@ -191,9 +191,7 @@ function _calculateThaiTax(incomeCAD, exchangeRate, colaMultiplier) {
     let previousLimit = 0;
 
     for (const bracket of THAI_TAX_BRACKETS_INTERNAL) {
-        // Adjust bracket limit by COLA? 
-        // Thai brackets are generally static, but for long-term sim, indexing helps avoid bracket creep.
-        // We will apply COLA to brackets for realistic long-term purchasing power parity.
+        // Adjust bracket limit by COLA
         let currentLimit = bracket.upTo === undefined ? Infinity : bracket.upTo;
         if (currentLimit !== Infinity) {
             currentLimit *= colaMultiplier;
