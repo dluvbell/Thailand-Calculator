@@ -1,10 +1,11 @@
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     8.2.0 (Fix: Added Asset Aggregation for Couple Mode in Monte Carlo)
+ * @version     9.0.0 (Feature: Dual-Track Monte Carlo with Water-filling Withdrawals)
  * @file        monteCarloEngine.js
  * @created     2025-11-09
- * @description Core Monte Carlo engine. Updated to merge User+Spouse assets before running simulations.
+ * @description Core Monte Carlo engine. Updated to mirror engineCore.js logic:
+ * Separate User/Spouse assets, individual tax calcs, and optimized withdrawals.
  */
 
 // monteCarloEngine.js
@@ -62,30 +63,35 @@ async function runMonteCarloSimulation(inputs, settings, stdevs, numRuns, progre
 }
 
 /**
- * Simulates a single run with randomized returns.
+ * Simulates a single run with randomized returns using Dual-Track logic.
  */
 function simulateSingleRun(inputs, settings, stdevs) {
     const scenario = JSON.parse(JSON.stringify(inputs.scenario)); // Deep copy
+    const hasSpouse = scenario.spouse && scenario.spouse.hasSpouse;
     
-    // [MODIFIED] Initialize Assets: Merge User and Spouse assets if Couple Mode is ON
-    // This mirrors the logic in engineCore.js to ensure MC simulates the full household pot.
-    let currentAssets = { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0 };
-    const userAssets = scenario.user.assets || { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0 };
+    // 1. Initialize Assets Separately
+    let currentUserAssets = { 
+        rrsp: scenario.user?.assets?.rrsp || 0, 
+        tfsa: scenario.user?.assets?.tfsa || 0, 
+        nonreg: scenario.user?.assets?.nonreg || 0, 
+        lif: scenario.user?.assets?.lif || 0 
+    };
+    
+    let currentSpouseAssets = { 
+        rrsp: scenario.spouse?.assets?.rrsp || 0, 
+        tfsa: scenario.spouse?.assets?.tfsa || 0, 
+        nonreg: scenario.spouse?.assets?.nonreg || 0, 
+        lif: scenario.spouse?.assets?.lif || 0 
+    };
 
-    if (scenario.spouse && scenario.spouse.hasSpouse) {
-        const spouseAssets = scenario.spouse.assets || { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0 };
-        currentAssets.rrsp = (userAssets.rrsp || 0) + (spouseAssets.rrsp || 0);
-        currentAssets.tfsa = (userAssets.tfsa || 0) + (spouseAssets.tfsa || 0);
-        currentAssets.nonreg = (userAssets.nonreg || 0) + (spouseAssets.nonreg || 0);
-        currentAssets.lif = (userAssets.lif || 0) + (spouseAssets.lif || 0);
-    } else {
-        currentAssets = JSON.parse(JSON.stringify(userAssets));
-    }
-
-    let previousYearThaiTax = 0;
+    // Tax trackers for next year's expense
+    let prevYearThaiTax_User = 0;
+    let prevYearThaiTax_Spouse = 0;
 
     const startYear = (scenario.user.birthYear || 0) + (scenario.retirementAge || 0);
     const endYear = (scenario.user.birthYear || 0) + (settings.maxAge || 95);
+    const userBirthYear = scenario.user?.birthYear || 1980;
+    const spouseBirthYear = hasSpouse ? (scenario.spouse.birthYear || userBirthYear) : userBirthYear;
 
     const annualBalances = [];
     let depleted = false; 
@@ -96,52 +102,101 @@ function simulateSingleRun(inputs, settings, stdevs) {
             continue;
         }
 
-        const userAge = currentYear - scenario.user.birthYear;
+        const userAge = currentYear - userBirthYear;
+        const spouseAge = currentYear - spouseBirthYear;
+
         if (userAge > (settings.maxAge || 95)) break;
 
+        // Initialize Year Data Structure (Dual Track)
         const yearData = {
-            year: currentYear, userAge: userAge,
-            income: { user: {}, total: 0 },
+            year: currentYear, 
+            userAge: userAge,
+            user: {
+                age: userAge,
+                income: { cpp: 0, oas: 0, pension: 0, other_taxable: 0, other_non_remitted: 0 },
+                tax: { total: 0, can: 0, thai: 0, clawback: 0 },
+                withdrawals: { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0, total: 0, thai_taxable_remittance: 0, wht_deducted: 0 }
+            },
+            spouse: {
+                age: spouseAge,
+                income: { cpp: 0, oas: 0, pension: 0, other_taxable: 0, other_non_remitted: 0 },
+                tax: { total: 0, can: 0, thai: 0, clawback: 0 },
+                withdrawals: { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0, total: 0, thai_taxable_remittance: 0, wht_deducted: 0 }
+            },
             expenses: 0, expenses_thai: 0, expenses_overseas: 0,
-            expenses_thai_tax: previousYearThaiTax
+            expenses_thai_tax: prevYearThaiTax_User + prevYearThaiTax_Spouse,
+            // Aggregates for Withdrawal Engine interface compat
+            income: { total: 0 }, 
+            withdrawals: { total: 0 } 
         };
 
-        // 1. Apply Randomized Growth
-        _applyRandomizedGrowth(currentAssets, scenario.returns, stdevs);
+        // 1. Apply Randomized Growth (Individual)
+        // We generate random returns for this year and apply to both (simulating same market conditions)
+        // OR apply separately. For simplicity and diversification simulation, apply to each pool.
+        _applyRandomizedGrowth(currentUserAssets, scenario.returns, stdevs);
+        if (hasSpouse) {
+            _applyRandomizedGrowth(currentSpouseAssets, scenario.returns, stdevs);
+        }
         
-        // 2. Calculate Income
-        step2_CalculateIncome(yearData, scenario, settings);
+        // 2. Calculate Income (Individual)
+        step2_CalculateIncome(yearData.user, scenario.user, settings, 'user', currentYear, scenario);
+        if (hasSpouse) {
+            step2_CalculateIncome(yearData.spouse, scenario.user, settings, 'spouse', currentYear, scenario);
+        }
+        yearData.income.total = (yearData.user.income?.total || 0) + (yearData.spouse.income?.total || 0);
         
-        // 3. Calculate Expenses
-        step3_CalculateExpenses(yearData, scenario, settings);
+        // 3. Calculate Expenses (Household)
+        step3_CalculateExpenses(yearData, scenario, settings, hasSpouse, spouseBirthYear);
         yearData.expenses += yearData.expenses_thai_tax;
 
-        // 4. Perform Withdrawals
-        const wdInfo = step4_PerformWithdrawals(yearData, currentAssets, userAge);
+        // 4. Perform Withdrawals (Water-filling Logic via Withdrawal Engine)
+        const wdInfo = step4_PerformWithdrawals(yearData, currentUserAssets, currentSpouseAssets, hasSpouse);
         
-        // 5. Calculate Taxes
-        const taxInfo = step5_CalculateTaxes(yearData, scenario, settings);
+        // 5. Calculate Taxes (Individual)
+        const userTaxInfo = step5_CalculateTaxes(yearData.user, scenario, settings, 'user');
+        yearData.user.tax = userTaxInfo;
         
-        // 6. Reinvest Surplus
-        const totalCashOut = yearData.expenses + taxInfo.tax_can;
+        let spouseTaxInfo = { totalTax: 0, tax_can: 0, tax_thai: 0 };
+        if (hasSpouse) {
+            spouseTaxInfo = step5_CalculateTaxes(yearData.spouse, scenario, settings, 'spouse');
+            yearData.spouse.tax = spouseTaxInfo;
+        }
+        
+        // 6. Reinvest Surplus (Split 50/50)
+        const totalCashOut = yearData.expenses + userTaxInfo.tax_can + spouseTaxInfo.tax_can;
         const totalCashIn = yearData.income.total + wdInfo.withdrawals.total;
         const netCashflow = totalCashIn - totalCashOut;
-        if (netCashflow > 0.01) currentAssets.nonreg += netCashflow;
+
+        if (netCashflow > 0.01) {
+            const splitSurplus = netCashflow / (hasSpouse ? 2 : 1);
+            currentUserAssets.nonreg += splitSurplus;
+            if (hasSpouse) currentSpouseAssets.nonreg += splitSurplus;
+        }
         
-        const totalAssets = Object.values(currentAssets).reduce((a, b) => a + b, 0);
+        // Calculate Total Household Assets for this year
+        const totalAssetsUser = Object.values(currentUserAssets).reduce((a, b) => a + b, 0);
+        const totalAssetsSpouse = Object.values(currentSpouseAssets).reduce((a, b) => a + b, 0);
+        const totalHouseholdAssets = totalAssetsUser + totalAssetsSpouse;
 
         if (wdInfo.depleted) {
             depleted = true; 
             annualBalances.push(0); 
-            currentAssets = { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0 }; 
+            // Zero out assets to prevent zombie growth
+            currentUserAssets = { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0 };
+            currentSpouseAssets = { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0 };
         } else {
-            annualBalances.push(totalAssets); 
+            annualBalances.push(totalHouseholdAssets); 
         }
         
-        previousYearThaiTax = taxInfo.tax_thai;
+        // Update Tax for next year
+        prevYearThaiTax_User = userTaxInfo.tax_thai;
+        prevYearThaiTax_Spouse = spouseTaxInfo.tax_thai;
     }
 
-    const finalTotalAssets = Object.values(currentAssets).reduce((a, b) => a + b, 0);
+    // Final Asset Sum
+    const finalTotalAssets = Object.values(currentUserAssets).reduce((a, b) => a + b, 0) + 
+                             Object.values(currentSpouseAssets).reduce((a, b) => a + b, 0);
+
     return { finalTotalAssets, annualBalances };
 }
 
