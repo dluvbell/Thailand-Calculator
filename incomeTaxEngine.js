@@ -1,10 +1,10 @@
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     9.9.0 (Fix: Removed Standard Deduction, Kept Personal Allowance Only)
+ * @version     9.9.4 (Fix: WHT set to 25% for CPP/OAS/Pension)
  * @file        incomeTaxEngine.js
  * @created     2025-11-09
- * @description Calculates income and taxes. Thai deduction updated to 60k THB (Personal Allowance only).
+ * @description Calculates income and taxes. WHT updated to 25% (Non-Resident Part XIII).
  */
 
 // incomeTaxEngine.js
@@ -112,7 +112,8 @@ function step2_CalculateIncome(yearDataRef, personParams, settings, ownerType, c
  * Calculates OAS Clawback, Canadian WHT, and Thai Tax (Resident).
  */
 function step5_CalculateTaxes(personYearData, fullScenario, settings, ownerType) {
-    const whtRate = 0.15; // Treaty Rate for Pensions
+    // [FIX] WHT Rate increased to 25% (Non-Resident Part XIII Tax)
+    const whtRate = 0.25; 
     
     // Determine birthYear to get currentYear for COLA indexing
     const owner = arguments[3] || 'user';
@@ -146,7 +147,7 @@ function step5_CalculateTaxes(personYearData, fullScenario, settings, ownerType)
 
     const netOas = Math.max(0, inc.oas - oasClawback);
 
-    // --- 2. Canadian Withholding Tax (15%) ---
+    // --- 2. Canadian Withholding Tax (25%) ---
     // Applied to CPP, Net OAS, Pension.
     // (RRSP/LIF withdrawals handled at source in withdrawalEngine)
     const canTaxBase = (inc.cpp || 0) + netOas + (inc.pension || 0);
