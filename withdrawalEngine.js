@@ -1,7 +1,7 @@
 /**
  * @project     Canada-Thailand Retirement Simulator (Non-Resident)
  * @author      dluvbell (https://github.com/dluvbell)
- * @version     9.8.0 (Fix: Dynamic Exchange Rate & Balanced Couple Withdrawals)
+ * @version     9.9.4 (Fix: WHT increased to 25% for RRSP/LIF withdrawals)
  * @file        withdrawalEngine.js
  * @description Implements "Water-filling" logic with dynamic Thai tax brackets and balanced couple withdrawals.
  */
@@ -28,11 +28,10 @@ function step4_PerformWithdrawals(yearData, userAssets, spouseAssets, hasSpouse,
     yearData.user.withdrawals = { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0, total: 0, thai_taxable_remittance: 0, wht_deducted: 0 };
     yearData.spouse.withdrawals = { rrsp: 0, tfsa: 0, nonreg: 0, lif: 0, total: 0, thai_taxable_remittance: 0, wht_deducted: 0 };
     
-    // 2. Calculate Available Income (Net of WHT for Optimization decision, though gross tracked elsewhere)
-    // Actually, pension income is exempt from Thai tax usually, so it doesn't eat up Thai brackets.
-    // BUT we need cash.
-    let userPensionCash = (yearData.user.income.cpp + yearData.user.income.oas + yearData.user.income.pension) * 0.85;
-    let spousePensionCash = (yearData.spouse.income.cpp + yearData.spouse.income.oas + yearData.spouse.income.pension) * 0.85;
+    // 2. Calculate Available Income (Net of 25% WHT for Optimization decision)
+    // Pension income WHT is now 25%
+    let userPensionCash = (yearData.user.income.cpp + yearData.user.income.oas + yearData.user.income.pension) * 0.75;
+    let spousePensionCash = (yearData.spouse.income.cpp + yearData.spouse.income.oas + yearData.spouse.income.pension) * 0.75;
     
     // Existing Cash Income (Remitted) - Counts towards Thai Tax Brackets
     let userCurrentRemitted = yearData.user.income.other_taxable || 0;
@@ -145,7 +144,7 @@ function _coverShortfallOptimized(shortfall, uAssets, sAssets, uWd, sWd, uCurren
     while (remaining > 1 && loopGuard < 200) {
         loopGuard++;
         
-        // [FIX] Calculate dynamic marginal rates
+        // Calculate dynamic marginal rates
         const uThaiRate = _getDynamicMarginalThaiRate(uSimIncome, exchangeRate);
         const sThaiRate = hasSpouse ? _getDynamicMarginalThaiRate(sSimIncome, exchangeRate) : 999;
 
@@ -163,9 +162,6 @@ function _coverShortfallOptimized(shortfall, uAssets, sAssets, uWd, sWd, uCurren
         
         // Option 1: User Non-Reg (Taxable in Thailand)
         if (uHasNonReg || uHasTFSA) {
-            // TFSA is 0% Thai tax, but we group it here as "Liquid Assets".
-            // Prioritize Non-Reg if we want to fill brackets, TFSA if we want to avoid tax.
-            // But usually we burn Non-Reg first.
             const cost = uHasNonReg ? uThaiRate : 0; 
             if (cost < minCost) { 
                 minCost = cost; bestOption = 'u_nonreg'; 
@@ -176,9 +172,7 @@ function _coverShortfallOptimized(shortfall, uAssets, sAssets, uWd, sWd, uCurren
         if (hasSpouse && (sHasNonReg || sHasTFSA)) {
             const cost = sHasNonReg ? sThaiRate : 0;
             
-            // [CRITICAL FIX] Balancing Logic
-            // If costs are equal (e.g. both 0% or both 5%), pick the one with LOWER accumulated income.
-            // This ensures we fill both buckets evenly ($25k/$25k) rather than one ($50k/$0).
+            // Balancing Logic
             if (cost < minCost) {
                 minCost = cost; bestOption = 's_nonreg';
             } else if (Math.abs(cost - minCost) < 0.0001) {
@@ -189,17 +183,14 @@ function _coverShortfallOptimized(shortfall, uAssets, sAssets, uWd, sWd, uCurren
             }
         }
 
-        // Option 3: RRSP (Fixed 15% WHT + potentially Thai Tax exempt if not remitted, but here we need Thai cash)
-        // If we remit RRSP, it is taxed in Thailand AND Canada (with credit). 
-        // Treaty: Canadian tax (15%) is creditable. So effective tax is Max(15%, ThaiRate).
-        // Since we pay 15% WHT anyway, the "Marginal Cost" to remit is Max(ThaiRate - 15%, 0).
-        // But simpler view: Cost is 15% (Can) + Max(0, Thai - 15%).
+        // Option 3: RRSP (Fixed 25% WHT + potential Thai Tax)
+        // Cost is 25% (Can) + Max(0, Thai - 25%). (Simplified optimization view)
         if (uHasRRSP) {
-            const cost = Math.max(0.15, uThaiRate);
+            const cost = Math.max(0.25, uThaiRate);
             if (cost < minCost - 0.0001) { minCost = cost; bestOption = 'u_rrsp'; }
         }
         if (hasSpouse && sHasRRSP) {
-            const cost = Math.max(0.15, sThaiRate);
+            const cost = Math.max(0.25, sThaiRate);
             if (cost < minCost - 0.0001) { minCost = cost; bestOption = 's_rrsp'; }
         }
 
@@ -213,7 +204,7 @@ function _coverShortfallOptimized(shortfall, uAssets, sAssets, uWd, sWd, uCurren
              room = _getDynamicRoomToNextBracket(sSimIncome, exchangeRate);
         }
         
-        // Step amount: Don't overshoot the bracket, but don't do tiny steps
+        // Step amount
         let stepAmount = Math.min(remaining, room);
         stepAmount = Math.max(stepAmount, 100); 
         stepAmount = Math.min(stepAmount, remaining);
@@ -231,7 +222,6 @@ function _coverShortfallOptimized(shortfall, uAssets, sAssets, uWd, sWd, uCurren
         } else if (bestOption === 'u_rrsp') {
             withdrawn = _withdrawFromTaxDeferredAccount('lif', stepAmount, uAssets, uWd, uAge, isRemitted);
             if (withdrawn < stepAmount) withdrawn += _withdrawFromTaxDeferredAccount('rrsp', stepAmount - withdrawn, uAssets, uWd, uAge, isRemitted);
-            // Note: RRSP withdrawal increases income for Thai tax bracket purposes
             uSimIncome += withdrawn; 
         } else if (bestOption === 's_rrsp') {
             withdrawn = _withdrawFromTaxDeferredAccount('lif', stepAmount, sAssets, sWd, sAge, isRemitted);
@@ -248,7 +238,6 @@ function _coverShortfallLowWHT(shortfall, uAssets, sAssets, uWd, sWd, hasSpouse,
     let remaining = shortfall;
     
     // Strategy: NonReg -> TFSA -> RRSP/LIF
-    // Split 50/50 if possible to deplete evenly
     if (remaining > 0) {
         const half = hasSpouse ? remaining / 2 : remaining;
         remaining -= _withdrawFromAccount('nonreg', half, uAssets, uWd, uAge, false);
@@ -262,7 +251,7 @@ function _coverShortfallLowWHT(shortfall, uAssets, sAssets, uWd, sWd, hasSpouse,
         if (remaining > 0) remaining -= _withdrawFromAccount('tfsa', remaining, uAssets, uWd, uAge, false);
     }
     if (remaining > 0) {
-        // RRSP/LIF comes with WHT, so use last for overseas
+        // RRSP/LIF
         const half = hasSpouse ? remaining / 2 : remaining;
         let w = 0;
         w = _withdrawFromTaxDeferredAccount('lif', half, uAssets, uWd, uAge, false);
@@ -290,7 +279,6 @@ function _withdrawFromAccount(accountType, amountNeeded, assets, wdRecord, age, 
         assets[accountType] -= withdrawAmount;
         wdRecord[accountType] += withdrawAmount;
         if (isThaiTaxable) wdRecord.thai_taxable_remittance += withdrawAmount;
-        // NOTE: No WHT on Non-Reg/TFSA withdrawals.
         return withdrawAmount;
     }
     return 0;
@@ -299,8 +287,8 @@ function _withdrawFromAccount(accountType, amountNeeded, assets, wdRecord, age, 
 function _withdrawFromTaxDeferredAccount(accountType, netAmountNeeded, assets, wdRecord, age, isThaiTaxable) {
     if (netAmountNeeded <= 0 || !assets || assets[accountType] <= 0) return 0;
     
-    // WHT is 15%. To get $85 net, we need to withdraw $100 gross.
-    const GROSS_FACTOR = 1 / 0.85;
+    // [FIX] WHT is 25%. To get $75 net, we need to withdraw $100 gross.
+    const GROSS_FACTOR = 1 / 0.75;
     let grossNeeded = netAmountNeeded * GROSS_FACTOR;
     let available = assets[accountType];
     let grossAvailable = available;
@@ -315,7 +303,8 @@ function _withdrawFromTaxDeferredAccount(accountType, netAmountNeeded, assets, w
     }
     
     const grossWithdrawAmount = Math.min(grossNeeded, grossAvailable);
-    const netWithdrawAmount = grossWithdrawAmount * 0.85;
+    // [FIX] Net is 75%
+    const netWithdrawAmount = grossWithdrawAmount * 0.75;
     
     if (grossWithdrawAmount > 0) {
         const whtDeducted = grossWithdrawAmount - netWithdrawAmount;
@@ -340,11 +329,8 @@ function _applyRrifLifMinimums(age, assets, wdRecord) {
     if (wdRecord.rrsp < minRrif - 1.0) {
         const grossExtra = Math.min(minRrif - wdRecord.rrsp, assets.rrsp || 0);
         if (grossExtra > 0) {
-            // Mandatory WD: 15% WHT applied.
-            // Assumption: This extra amount is just taken as cash (remitted or not, usually taxable if remitted).
-            // But we don't know if user remits it. 
-            // Conservative: Add WHT, don't auto-add to remittance (unless needed later).
-            const whtRate = 0.15;
+            // [FIX] Mandatory WD: 25% WHT applied.
+            const whtRate = 0.25;
             const whtExtra = grossExtra * whtRate;
             assets.rrsp -= grossExtra;
             wdRecord.rrsp += grossExtra;
@@ -358,7 +344,7 @@ function _applyRrifLifMinimums(age, assets, wdRecord) {
     if (wdRecord.lif < minLif - 1.0) {
         const grossExtra = Math.min(minLif - wdRecord.lif, assets.lif || 0);
         if (grossExtra > 0) {
-            const whtRate = 0.15;
+            const whtRate = 0.25;
             const whtExtra = grossExtra * whtRate;
             assets.lif -= grossExtra;
             wdRecord.lif += grossExtra;
@@ -388,8 +374,8 @@ function getLifMaximumFactor(age) {
 function _getDynamicMarginalThaiRate(incomeCAD, exchangeRate) {
     const incomeTHB = incomeCAD * exchangeRate;
     // Apply Resident Deductions to find Bracket
-    // Standard Deduction 100k + Personal 60k = 160k
-    const taxableTHB = Math.max(0, incomeTHB - 160000);
+    // Personal 60k only
+    const taxableTHB = Math.max(0, incomeTHB - 60000);
 
     if (taxableTHB <= 150000) return 0.00;
     if (taxableTHB <= 300000) return 0.05;
@@ -403,7 +389,7 @@ function _getDynamicMarginalThaiRate(incomeCAD, exchangeRate) {
 
 function _getDynamicRoomToNextBracket(incomeCAD, exchangeRate) {
     const incomeTHB = incomeCAD * exchangeRate;
-    const taxableTHB = Math.max(0, incomeTHB - 160000);
+    const taxableTHB = Math.max(0, incomeTHB - 60000);
     
     let limitTHB = 0;
     if (taxableTHB < 150000) limitTHB = 150000;
